@@ -1,0 +1,11 @@
+pyinstaller
+pyautogui
+pyperclip
+pillow
+pystray
+opencv-python
+pywin32
+tkcalendar
+pywinauto
+pandas
+xlsxwriter
