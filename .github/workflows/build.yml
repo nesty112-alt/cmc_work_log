@@ -17,19 +17,19 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip' # 빌드 속도 향상을 위해 pip 캐시 적용 (공식 권장 사항)
+          # requirements.txt 파일 부재로 인한 에러를 막기 위해 캐시 옵션(cache: 'pip') 제외
 
       - name: 패키지 설치
         run: |
           python -m pip install --upgrade pip
-          pip install pandas tkcalendar xlsxwriter
+          pip install pyinstaller pandas tkcalendar xlsxwriter
 
       - name: exe 빌드
-        # 대상 파일을 main.py에서 discharge_analysis.py로 변경
-        run: pyinstaller --onefile --windowed discharge_analysis.py
+        # PATH 환경 변수 꼬임 문제를 피하기 위해 'python -m PyInstaller' 명령어로 확실하게 실행
+        run: python -m PyInstaller --onefile --windowed discharge_analysis.py
 
       - name: 빌드 결과 업로드
         uses: actions/upload-artifact@v4
         with:
-          name: windows-exe
+          name: work_log_DA
           path: dist/*.exe
