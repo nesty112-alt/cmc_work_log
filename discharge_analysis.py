@@ -1,0 +1,1001 @@
+import os
+import json
+import glob
+from datetime import datetime
+import tkinter as tk
+from tkinter import ttk, messagebox
+import pandas as pd
+
+try:
+    from tkcalendar import DateEntry
+    HAS_TKCALENDAR = True
+except ImportError:
+    HAS_TKCALENDAR = False
+
+
+# 1. 고정 설정 (로컬 테스트용 폴더 경로 및 부서원 리스트)
+CONFIG_FILE = os.path.join(os.getcwd(), "config.json")
+
+def load_config():
+    if os.path.exists(CONFIG_FILE):
+        try:
+            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except:
+            pass
+    return {"LOCAL_BASE_PATH": os.path.join(os.getcwd(), "업무일지_테스트")}
+
+config = load_config()
+LOCAL_BASE_PATH = config.get("LOCAL_BASE_PATH", os.path.join(os.getcwd(), "업무일지_테스트"))
+
+STAFF_MASTER_FILE = os.path.join(os.getcwd(), "staff_master.json")
+LAST_USER_FILE = os.path.join(os.getcwd(), "last_user.txt")
+
+def load_staff_list():
+    default_staff = [
+        "고미경", "이용화", "김산들", "조선옥", "김성진",
+        "박찬용", "강민정", "성수지", "유민지", "이루른", "이은혜"
+    ]
+    if os.path.exists(STAFF_MASTER_FILE):
+        try:
+            with open(STAFF_MASTER_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"마스터 파일 로드 실패: {e}")
+            return default_staff
+    else:
+        try:
+            with open(STAFF_MASTER_FILE, "w", encoding="utf-8") as f:
+                json.dump(default_staff, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"마스터 파일 생성 실패: {e}")
+        return default_staff
+
+STAFF_LIST = load_staff_list()
+
+TASK_MASTER_FILE = os.path.join(os.getcwd(), "task_master.json")
+
+def load_task_list():
+    default_tasks = {
+        "코딩": ["진코딩", "가코딩", "Confirm", "재원코딩", "DRG_확정", "DRG_임시", "Pathology"],
+        "모니터링": ["외래_모니터링", "퇴원_모니터링", "응급_모니터링", "POA_질지표"],
+        "문서작업": ["인증서_발급", "서식_생성", "서식_수정"]
+    }
+    if os.path.exists(TASK_MASTER_FILE):
+        try:
+            with open(TASK_MASTER_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"세부 업무 마스터 파일 로드 실패: {e}")
+            return default_tasks
+    else:
+        try:
+            with open(TASK_MASTER_FILE, "w", encoding="utf-8") as f:
+                json.dump(default_tasks, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            print(f"세부 업무 마스터 파일 생성 실패: {e}")
+        return default_tasks
+
+TASK_CATEGORIES = load_task_list()
+
+
+class WorkLogApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("재원점검 퇴원분석 업무일지")
+        self.root.geometry("1000x950")
+
+        self.entries = {}
+        self.create_widgets()
+
+    def validate_number(self, value_if_allowed):
+        if value_if_allowed == "":
+            return True
+        try:
+            int(value_if_allowed)
+            return True
+        except ValueError:
+            return False
+
+    def create_widgets(self):
+        # 상단 타이틀
+        top_frame = tk.Frame(self.root)
+        top_frame.pack(fill="x", pady=10)
+        title_label = tk.Label(top_frame, text="재원점검 퇴원분석 업무일지", font=("Arial", 16, "bold"))
+        title_label.pack(side="left", padx=20)
+
+        settings_btn = tk.Button(top_frame, text="환경설정", command=self.open_settings)
+        settings_btn.pack(side="right", padx=20)
+
+        # ------------------ 기본 정보 입력 구역 ------------------
+        info_frame = tk.LabelFrame(self.root, text="일자 / 사용자 선택", padx=10, pady=10)
+        info_frame.pack(fill="x", padx=20, pady=5)
+
+        inner_frame = tk.Frame(info_frame)
+        inner_frame.pack(fill="x")
+
+        # 날짜 설정 (기본값: 오늘)
+        lbl_text = "작업 날짜:" if HAS_TKCALENDAR else "작업 날짜:"
+        tk.Label(inner_frame, text=lbl_text).pack(side="left", padx=(0, 5))
+        self.date_var = tk.StringVar(value=datetime.now().strftime("%Y-%m-%d"))
+        
+        if HAS_TKCALENDAR:
+            self.date_entry = DateEntry(inner_frame, textvariable=self.date_var, date_pattern='yyyy-mm-dd', 
+                                        width=13, background='darkblue', foreground='white', borderwidth=2)
+            self.date_entry.pack(side="left", padx=(0, 20))
+        else:
+            self.date_entry = tk.Entry(inner_frame, textvariable=self.date_var, width=15)
+            self.date_entry.pack(side="left", padx=(0, 5))
+            tk.Label(inner_frame, text=" (형식: YYYY-MM-DD)").pack(side="left")
+            
+            # tkcalendar 미설치 안내 라벨
+            tk.Label(inner_frame, text="*달력을 쓰려면 pip install tkcalendar 필요", fg="gray", font=("Arial", 9)).pack(side="left", padx=(5, 20))
+
+        # 담당자 선택 드롭다운
+        tk.Label(inner_frame, text="담당자 선택:").pack(side="left", padx=(0, 5))
+        self.staff_combo = ttk.Combobox(inner_frame, values=STAFF_LIST, state="readonly", width=13)
+        self.staff_combo.pack(side="left")
+        
+        last_user = "선택하세요"
+        if os.path.exists(LAST_USER_FILE):
+            try:
+                with open(LAST_USER_FILE, "r", encoding="utf-8") as f:
+                    saved_user = f.read().strip()
+                    if saved_user in STAFF_LIST:
+                        last_user = saved_user
+            except:
+                pass
+        self.staff_combo.set(last_user)
+
+        # ------------------ 메모 입력 구역 (공통 주요사항) ------------------
+        memo_frame = tk.LabelFrame(self.root, padx=10, pady=5)
+        memo_frame.pack(fill="x", padx=20, pady=5)
+        
+        memo_header = tk.Frame(memo_frame, width=930, height=25)
+        memo_header.pack_propagate(False)
+        tk.Label(memo_header, text="공통 주요사항 (해당 일자 부서 전체 공유)").pack(side="left")
+        
+        sep = ttk.Separator(memo_header, orient="horizontal")
+        sep.pack(side="left", fill="x", expand=True, padx=5)
+
+        tk.Button(memo_header, text="저장하기", command=self.save_memo, bg="#4CAF50", fg="black", font=("Arial", 9, "bold")).pack(side="right", padx=2)
+        tk.Button(memo_header, text="불러오기", command=self.load_memo, bg="#FF9800", fg="black", font=("Arial", 9, "bold")).pack(side="right", padx=2)
+        memo_frame.config(labelwidget=memo_header)
+
+        self.memo_text = tk.Text(memo_frame, height=3, width=50)
+        self.memo_text.pack(fill="both", expand=True)
+
+        # ------------------ 업무 실적 입력 구역 ------------------
+        fields_frame = tk.LabelFrame(self.root, text="세부 업무 실적 (일계 건수 입력)", padx=10, pady=10)
+        fields_frame.pack(fill="both", expand=True, padx=20, pady=10)
+
+        # 좌측: 세부업무 리스트 (스크롤 지원)
+        tasks_container = tk.Frame(fields_frame)
+        tasks_container.pack(side="left", fill="both", expand=True)
+
+        # 스크롤 가능한 영역 만들기
+        canvas = tk.Canvas(tasks_container, borderwidth=0, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(tasks_container, orient="vertical", command=canvas.yview)
+        self.scrollable_frame = tk.Frame(canvas)
+
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        # 실적 입력 필드 배치 (카테고리별로 렌더링)
+        vcmd = (self.root.register(self.validate_number), '%P')
+        current_row = 0
+        self.entry_list = []
+
+        for category, fields in TASK_CATEGORIES.items():
+            # 카테고리 묶음 박스 (테두리 없음, 밝은 배경색)
+            cat_box = tk.Frame(self.scrollable_frame, bg="#F5F7FA", bd=0, padx=10, pady=10)
+            cat_box.grid(row=current_row, column=0, padx=10, pady=5, sticky="we")
+            current_row += 1
+
+            # 카테고리 헤더 (좌측 배치)
+            cat_lbl = tk.Label(cat_box, text=f"[{category}]", font=("Arial", 13, "bold"), fg="#222222", bg="#F5F7FA", width=12, anchor="nw")
+            cat_lbl.grid(row=0, column=0, rowspan=max(1, len(fields)), padx=(5, 10), pady=2, sticky="nw")
+
+            # 세로선 (구분선) 추가
+            separator = tk.Frame(cat_box, width=1, bg="#D0D0D0")
+            separator.grid(row=0, column=1, rowspan=max(1, len(fields)), sticky="ns", padx=(0, 15), pady=2)
+
+            for idx, field in enumerate(fields):
+                lbl = tk.Label(cat_box, text=field, width=18, anchor="w", bg="#F5F7FA")
+                lbl.grid(row=idx, column=2, padx=(0, 10), pady=2, sticky="w")
+
+                entry = tk.Entry(cat_box, width=12, justify="right", validate="key", validatecommand=vcmd)
+                entry.insert(0, "0")  # 기본값 0
+                entry.grid(row=idx, column=3, padx=5, pady=2)
+                self.entries[field] = entry
+                self.entry_list.append(entry)
+
+        # 엔터 키 입력 시 다음 필드로 이동 및 텍스트 전체 선택
+        def focus_next_entry(event, index):
+            if index + 1 < len(self.entry_list):
+                next_entry = self.entry_list[index + 1]
+                next_entry.focus_set()
+                next_entry.select_range(0, tk.END)
+                next_entry.icursor(tk.END)
+            return "break"
+
+        for i, entry in enumerate(self.entry_list):
+            entry.bind("<Return>", lambda e, idx=i: focus_next_entry(e, idx))
+
+        # 우측: 그외 업무 진행사항
+        other_frame = tk.Frame(fields_frame)
+        other_frame.pack(side="right", fill="both", expand=True, padx=(15, 0))
+
+        other_lbl = tk.Label(other_frame, text="[그외 업무 진행사항]", font=("Arial", 11, "bold"), fg="#333333")
+        other_lbl.pack(anchor="nw", pady=(0, 5))
+
+        self.other_progress_text = tk.Text(other_frame, width=30)
+        self.other_progress_text.pack(fill="both", expand=True)
+
+        # 이벤트 바인딩 (자동 불러오기)
+        self.staff_combo.bind("<<ComboboxSelected>>", self.load_data)
+        if HAS_TKCALENDAR:
+            self.date_entry.bind("<<DateEntrySelected>>", self.load_data)
+        self.date_entry.bind("<FocusOut>", self.load_data)
+        self.date_entry.bind("<Return>", self.load_data)
+        
+        # 앱 시작 시 오늘 날짜 공통 메모 로드
+        self.load_data()
+
+        # ------------------ 하단 버튼 구역 ------------------
+        btn_frame = tk.Frame(self.root)
+        btn_frame.pack(fill="x", padx=20, pady=15)
+
+        # 불러오기 버튼
+        refresh_btn = tk.Button(btn_frame, text="최신 데이터 불러오기", bg="#FF9800", fg="black", font=("Arial", 11, "bold"),
+                                width=22, command=self.refresh_data)
+        refresh_btn.pack(side="left", padx=5, expand=True)
+
+        # 저장 버튼 (개별 PC용)
+        save_btn = tk.Button(btn_frame, text="내 실적 저장하기", bg="#4CAF50", fg="black", font=("Arial", 11, "bold"),
+                             width=22, command=self.save_data)
+        save_btn.pack(side="left", padx=5, expand=True)
+
+        # 미리보기 버튼
+        preview_btn = tk.Button(btn_frame, text="미리보기", bg="#9C27B0", fg="black", font=("Arial", 11, "bold"),
+                                width=22, command=self.preview_html)
+        preview_btn.pack(side="left", padx=5, expand=True)
+
+
+
+    def refresh_data(self):
+        self.load_data()
+        self.load_memo(silent=True)
+        messagebox.showinfo("불러오기 완료", "서버(폴더)에 저장된 최신 데이터를 성공적으로 불러왔습니다.\n(공통 주요사항 및 본인 실적 갱신)")
+
+    def save_data(self):
+        user_name = self.staff_combo.get()
+        if user_name == "선택하세요":
+            messagebox.showwarning("경고", "담당자를 선택해 주세요.")
+            return
+
+        date_input = self.date_var.get().strip()
+        try:
+            # 날짜 형식 검증 및 변환
+            date_obj = datetime.strptime(date_input, "%Y-%m-%d")
+            folder_month = date_obj.strftime("%Y-%m")  # YYYY-MM
+            file_date = date_obj.strftime("%Y%m%d")  # YYYYMMDD
+        except ValueError:
+            messagebox.showerror("오류", "날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+            return
+
+        # 입력 데이터 추출 및 검증
+        task_data = {}
+        for field, entry in self.entries.items():
+            val = entry.get().strip()
+            if not val.isdigit():
+                messagebox.showerror("오류", f"'{field}' 항목에는 숫자만 입력할 수 있습니다.")
+                return
+            task_data[field] = int(val)
+
+        # 로컬 경로 생성 (월별로 폴더 분할 관리)
+        target_dir = os.path.join(LOCAL_BASE_PATH, folder_month)
+        try:
+            os.makedirs(target_dir, exist_ok=True)
+        except Exception as e:
+            messagebox.showerror("경로 오류", f"로컬 폴더를 생성하거나 접근할 수 없습니다.\n{e}")
+            return
+
+        # 파일명 정의 (예: 20260702_김성진.json)
+        file_name = f"{file_date}_{user_name}.json"
+        file_path = os.path.join(target_dir, file_name)
+
+        # 데이터 저장 구조 정의
+        payload = {
+            "date": date_input,
+            "name": user_name,
+            "tasks": task_data,
+            "other_progress": self.other_progress_text.get("1.0", tk.END).strip(),
+            "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=4)
+                
+            # 공통 주요사항 저장은 분리되었으므로 여기서는 내 실적만 저장
+                
+            # 마지막 사용 담당자 기억
+            try:
+                with open(LAST_USER_FILE, "w", encoding="utf-8") as f:
+                    f.write(user_name)
+            except:
+                pass
+                
+            messagebox.showinfo("저장 성공", f"{user_name}님의 {date_input} 실적이 저장되었습니다.\n\n저장 위치:\n{file_path}")
+        except Exception as e:
+            messagebox.showerror("저장 실패", f"파일 저장 중 오류가 발생했습니다: {e}")
+
+    def preview_html(self):
+        from html_export import generate_html_report
+        date_input = self.date_var.get().strip()
+        try:
+            date_obj = datetime.strptime(date_input, "%Y-%m-%d")
+            folder_month = date_obj.strftime("%Y-%m")
+            file_date = date_obj.strftime("%Y%m%d")
+        except ValueError:
+            messagebox.showerror("오류", "날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+            return
+
+        target_dir = os.path.join(LOCAL_BASE_PATH, folder_month)
+        os.makedirs(target_dir, exist_ok=True)
+        
+        file_pattern = os.path.join(target_dir, "*.json")
+        json_files = glob.glob(file_pattern)
+
+        all_rows = []
+        for file_path in json_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    row = {"일자": data.get("date", ""), "담당자": data.get("name", ""), "other_progress": data.get("other_progress", "")}
+                    row.update(data.get("tasks", {}))
+                    all_rows.append(row)
+            except Exception as e:
+                pass
+
+        # 현재 UI 데이터 읽기 (저장하지 않음)
+        user_name = self.staff_combo.get()
+        if user_name != "선택하세요":
+            task_data = {}
+            for field, entry in self.entries.items():
+                val = entry.get().strip()
+                if val.isdigit():
+                    task_data[field] = int(val)
+                else:
+                    task_data[field] = 0
+            
+            ui_row = {"일자": date_input, "담당자": user_name, "other_progress": self.other_progress_text.get("1.0", tk.END).strip()}
+            ui_row.update(task_data)
+            
+            # 덮어쓰기 로직: 일자와 담당자가 동일한 행이 있다면 업데이트, 아니면 추가
+            replaced = False
+            for i, r in enumerate(all_rows):
+                if r.get("일자") == date_input and r.get("담당자") == user_name:
+                    all_rows[i] = ui_row
+                    replaced = True
+                    break
+            if not replaced:
+                all_rows.append(ui_row)
+
+        if not all_rows:
+            messagebox.showinfo("안내", "유효한 데이터가 없습니다.")
+            return
+
+        df_all = pd.DataFrame(all_rows)
+
+        # 라이브 마스터 리스트와 실제 데이터 사용자 통합 및 정렬
+        current_staff_master = load_staff_list()
+        all_unique_users = df_all["담당자"].unique().tolist()
+        ordered_users = current_staff_master + [u for u in all_unique_users if u not in current_staff_master]
+
+        # 1. 데일리 취합 요약 (선택한 날짜 기준)
+        df_daily = df_all[df_all["일자"] == date_input].copy()
+        df_daily.set_index("담당자", inplace=True)
+        df_daily = df_daily.reindex(ordered_users)
+        df_daily.index.name = "담당자"
+        df_daily.reset_index(inplace=True)
+        df_daily.fillna(0, inplace=True)
+
+        # 2. 월간 취합 요약 (해당 월 전체)
+        if "일자" in df_all.columns:
+            df_monthly_base = df_all.drop(columns=["일자"])
+        else:
+            df_monthly_base = df_all
+            
+        # 3. HTML 생성용 딕셔너리 준비
+        daily_dict = df_daily.set_index("담당자").to_dict('index')
+        monthly_dict = df_monthly_base.groupby("담당자").sum(numeric_only=True).to_dict('index')
+
+        # 4. 공통 메모 로드 (현재 UI에 적힌 메모 우선 적용)
+        memo_content = self.memo_text.get("1.0", tk.END).strip()
+        if not memo_content:
+            memo_path = os.path.join(target_dir, f"{file_date}_memo.txt")
+            if os.path.exists(memo_path):
+                try:
+                    with open(memo_path, 'r', encoding='utf-8') as f:
+                        memo_content = f.read()
+                except:
+                    pass
+
+        out_file, err = generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=True)
+        if err:
+            messagebox.showerror("미리보기 실패", f"미리보기 생성 중 오류가 발생했습니다: {err}")
+
+    def load_data(self, event=None):
+        date_input = self.date_var.get().strip()
+        user_name = self.staff_combo.get()
+        
+        try:
+            date_obj = datetime.strptime(date_input, "%Y-%m-%d")
+            folder_month = date_obj.strftime("%Y-%m")
+            file_date = date_obj.strftime("%Y%m%d")
+        except ValueError:
+            return
+            
+        target_dir = os.path.join(LOCAL_BASE_PATH, folder_month)
+        
+        # 공통 메모 로드 (silent 모드로)
+        self.load_memo(silent=True)
+                
+        # 담당자별 데이터 로드
+        if user_name != "선택하세요":
+            # 폼 초기화
+            for entry in self.entries.values():
+                entry.delete(0, tk.END)
+                entry.insert(0, "0")
+            self.other_progress_text.delete("1.0", tk.END)
+            
+            file_path = os.path.join(target_dir, f"{file_date}_{user_name}.json")
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        tasks = data.get("tasks", {})
+                        for k, v in tasks.items():
+                            if k in self.entries:
+                                self.entries[k].delete(0, tk.END)
+                                self.entries[k].insert(0, str(v))
+                        other_progress = data.get("other_progress", "")
+                        if other_progress:
+                            self.other_progress_text.insert("1.0", other_progress)
+                except:
+                    pass
+
+    def load_memo(self, silent=False):
+        date_input = self.date_var.get().strip()
+        try:
+            date_obj = datetime.strptime(date_input, "%Y-%m-%d")
+            folder_month = date_obj.strftime("%Y-%m")
+            file_date = date_obj.strftime("%Y%m%d")
+        except ValueError:
+            if not silent: messagebox.showerror("오류", "날짜 형식이 올바르지 않습니다.")
+            return
+
+        target_dir = os.path.join(LOCAL_BASE_PATH, folder_month)
+        memo_path = os.path.join(target_dir, f"{file_date}_memo.txt")
+        
+        self.memo_text.delete("1.0", tk.END)
+        if os.path.exists(memo_path):
+            try:
+                with open(memo_path, 'r', encoding='utf-8') as f:
+                    self.memo_text.insert("1.0", f.read().strip())
+                if not silent: messagebox.showinfo("불러오기 완료", "공통 주요사항을 성공적으로 불러왔습니다.")
+            except Exception as e:
+                if not silent: messagebox.showerror("오류", f"메모 불러오기 실패: {e}")
+        else:
+            if not silent: messagebox.showinfo("안내", "해당 날짜에 저장된 공통 주요사항이 없습니다.")
+
+    def save_memo(self):
+        date_input = self.date_var.get().strip()
+        try:
+            date_obj = datetime.strptime(date_input, "%Y-%m-%d")
+            folder_month = date_obj.strftime("%Y-%m")
+            file_date = date_obj.strftime("%Y%m%d")
+        except ValueError:
+            messagebox.showerror("오류", "날짜 형식이 올바르지 않습니다.")
+            return
+
+        target_dir = os.path.join(LOCAL_BASE_PATH, folder_month)
+        os.makedirs(target_dir, exist_ok=True)
+        
+        memo_path = os.path.join(target_dir, f"{file_date}_memo.txt")
+        try:
+            with open(memo_path, "w", encoding="utf-8") as f:
+                f.write(self.memo_text.get("1.0", tk.END).strip())
+            messagebox.showinfo("저장 성공", "공통 주요사항이 성공적으로 저장되었습니다.")
+        except Exception as e:
+            messagebox.showerror("저장 실패", f"메모 저장 중 오류가 발생했습니다: {e}")
+
+    def merge_to_excel(self):
+        date_input = self.date_var.get().strip()
+        try:
+            date_obj = datetime.strptime(date_input, "%Y-%m-%d")
+            folder_month = date_obj.strftime("%Y-%m")
+            file_date = date_obj.strftime("%Y%m%d")
+        except ValueError:
+            messagebox.showerror("오류", "날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+            return
+
+        target_dir = os.path.join(LOCAL_BASE_PATH, folder_month)
+        # 월 전체 데이터 로드
+        file_pattern = os.path.join(target_dir, "*.json")
+        json_files = glob.glob(file_pattern)
+
+        if not json_files:
+            messagebox.showinfo("안내", f"{folder_month} 월에 저장된 데이터가 없습니다.")
+            return
+
+        all_rows = []
+        for file_path in json_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    row = {"일자": data.get("date", ""), "담당자": data.get("name", ""), "other_progress": data.get("other_progress", "")}
+                    row.update(data.get("tasks", {}))
+                    all_rows.append(row)
+            except Exception as e:
+                print(f"파일 로드 실패 ({file_path}): {e}")
+
+        if not all_rows:
+            messagebox.showinfo("안내", "유효한 데이터가 없습니다.")
+            return
+
+        # Pandas 변환
+        df_all = pd.DataFrame(all_rows)
+
+        # 라이브 마스터 리스트와 실제 데이터 사용자 통합 및 정렬
+        current_staff_master = load_staff_list()
+        all_unique_users = df_all["담당자"].unique().tolist()
+        ordered_users = current_staff_master + [u for u in all_unique_users if u not in current_staff_master]
+
+        # 1. 데일리 취합 요약 (선택한 날짜 기준)
+        df_daily = df_all[df_all["일자"] == date_input].copy()
+        df_daily.set_index("담당자", inplace=True)
+        df_daily = df_daily.reindex(ordered_users)
+        df_daily.index.name = "담당자"
+        df_daily.reset_index(inplace=True)
+        df_daily["일자"] = df_daily["일자"].fillna(date_input)
+        df_daily.fillna(0, inplace=True)
+
+        # 2. 월간 취합 요약 (해당 월 전체 담당자별 합계)
+        if "일자" in df_all.columns:
+            df_monthly_base = df_all.drop(columns=["일자"])
+        else:
+            df_monthly_base = df_all
+            
+        df_monthly = df_monthly_base.groupby("담당자").sum(numeric_only=True)
+        df_monthly = df_monthly.reindex(ordered_users)
+        df_monthly.index.name = "담당자"
+        df_monthly.reset_index(inplace=True)
+        df_monthly.fillna(0, inplace=True)
+
+        # 3. Summary 탭용 딕셔너리 준비
+        daily_dict = df_daily.set_index("담당자").to_dict('index')
+        monthly_dict = df_monthly_base.groupby("담당자").sum(numeric_only=True).to_dict('index')
+
+        # 월간 요약에도 부서 총합 추가
+        monthly_task_cols = [col for col in df_monthly.columns if col != "담당자"]
+        m_total_row = {col: df_monthly[col].sum() for col in monthly_task_cols}
+        m_total_row["담당자"] = "월간 부서 총합"
+        df_monthly_with_total = pd.concat([df_monthly, pd.DataFrame([m_total_row])], ignore_index=True)
+
+        # Excel 저장 경로 설정 (로컬 내부에 바로 생성)
+        excel_name = f"업무일지_취합_{folder_month}.xlsx"
+        excel_path = os.path.join(target_dir, excel_name)
+
+        try:
+            with pd.ExcelWriter(excel_path, engine='xlsxwriter') as writer:
+                # Summary 탭을 해당 날짜로 생성하여 첫 번째 탭으로 만듦
+                pd.DataFrame().to_excel(writer, sheet_name=date_input, header=False, index=False)
+                df_monthly_with_total.to_excel(writer, sheet_name="월간 요약", index=False)
+                
+                workbook = writer.book
+                worksheet = writer.sheets[date_input]
+                
+                # ==========================
+                # 커스텀 Summary 시트 작성
+                # ==========================
+                fmt_title = workbook.add_format({'bold': True, 'font_size': 18})
+                fmt_subtitle = workbook.add_format({'bold': True, 'font_size': 12})
+                fmt_header_gray = workbook.add_format({'bold': True, 'bg_color': '#D9D9D9', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                fmt_header_diag = workbook.add_format({'bold': True, 'bg_color': '#D9D9D9', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'diag_type': 1, 'diag_border': 1})
+                fmt_cell = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                fmt_category = workbook.add_format({'bg_color': '#F2F2F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                fmt_task = workbook.add_format({'bg_color': '#F2F2F2', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                fmt_val = workbook.add_format({'border': 1, 'align': 'right', 'valign': 'vcenter', 'num_format': '#,##0'})
+                fmt_val_zero = workbook.add_format({'border': 1, 'align': 'center', 'valign': 'vcenter'})
+                
+                # 요일 계산
+                weekdays = ["월요일", "화요일", "수요일", "목요일", "금요일", "토요일", "일요일"]
+                day_str = weekdays[date_obj.weekday()]
+                date_str = f"■ {date_obj.year}년 {date_obj.month}월 {date_obj.day}일 ({day_str})"
+                
+                worksheet.write(0, 0, "재원점검·퇴원분석 업무일지", fmt_title)
+                worksheet.write(2, 0, date_str, fmt_subtitle)
+                
+                worksheet.set_column(0, 0, 10)
+                worksheet.set_column(1, 1, 15)
+                
+                num_staff = len(STAFF_LIST)
+                max_col = 1 + num_staff * 2
+                
+                # 주 요 사 항
+                fmt_memo = workbook.add_format({'border': 1, 'align': 'left', 'valign': 'top', 'text_wrap': True})
+                memo_content = ""
+                memo_path = os.path.join(target_dir, f"{file_date}_memo.txt")
+                if os.path.exists(memo_path):
+                    try:
+                        with open(memo_path, 'r', encoding='utf-8') as f:
+                            memo_content = f.read().strip()
+                    except:
+                        pass
+                worksheet.merge_range(4, 0, 4, max_col, "주 요 사 항", fmt_header_gray)
+                worksheet.merge_range(5, 0, 8, max_col, memo_content, fmt_memo)
+                    
+                # 개별 업무 현황
+                start_row = 10
+                worksheet.merge_range(start_row, 0, start_row, max_col, "개별 업무 현황", fmt_header_gray)
+                
+                # 헤더 그리기
+                hr1 = start_row + 1
+                hr2 = start_row + 2
+                worksheet.merge_range(hr1, 0, hr2, 1, "담당자               \n               업무명", fmt_header_diag)
+                
+                col = 2
+                for staff in ordered_users:
+                    worksheet.merge_range(hr1, col, hr1, col+1, staff, fmt_header_gray)
+                    worksheet.write(hr2, col, "일계", fmt_header_gray)
+                    worksheet.write(hr2, col+1, "누계", fmt_header_gray)
+                    worksheet.set_column(col, col+1, 6)
+                    col += 2
+                    
+                # 데이터 영역
+                row = hr2 + 1
+                for cat, tasks in TASK_CATEGORIES.items():
+                    cat_start = row
+                    for t in tasks:
+                        worksheet.write(row, 1, t, fmt_task)
+                        c = 2
+                        for staff in ordered_users:
+                            val_d = daily_dict.get(staff, {}).get(t, 0)
+                            if pd.isna(val_d) or val_d == 0 or str(val_d).strip() == "":
+                                worksheet.write(row, c, "-", fmt_val_zero)
+                            else:
+                                worksheet.write(row, c, float(val_d), fmt_val)
+                                
+                            val_m = monthly_dict.get(staff, {}).get(t, 0)
+                            if pd.isna(val_m) or val_m == 0 or str(val_m).strip() == "":
+                                worksheet.write(row, c+1, "-", fmt_val_zero)
+                            else:
+                                worksheet.write(row, c+1, float(val_m), fmt_val)
+                            c += 2
+                        row += 1
+                        
+                    if row > cat_start:
+                        if row - 1 == cat_start:
+                            worksheet.write(cat_start, 0, cat, fmt_category)
+                        else:
+                            worksheet.merge_range(cat_start, 0, row-1, 0, cat, fmt_category)
+                
+                # 그외 업무 진행사항
+                worksheet.merge_range(row, 0, row+4, 1, "그외\n업무 진행사항", fmt_category)
+                c = 2
+                for staff in ordered_users:
+                    other_text = daily_dict.get(staff, {}).get("other_progress", "")
+                    if pd.isna(other_text) or other_text == 0:
+                        other_text = ""
+                    worksheet.merge_range(row, c, row+4, c+1, str(other_text).strip(), fmt_memo)
+                    c += 2
+                
+                # --- 월간 요약 탭 그래프 ---
+                worksheet_monthly = writer.sheets['월간 요약']
+                chart_monthly = workbook.add_chart({'type': 'column'})
+                
+                last_row = len(df_monthly_with_total)
+                task_start_col = 1
+                task_end_col = len(monthly_task_cols)
+                
+                chart_monthly.add_series({
+                    'name': '항목별 월간 부서 총 업무량',
+                    'categories': ['월간 요약', 0, task_start_col, 0, task_end_col],
+                    'values':     ['월간 요약', last_row, task_start_col, last_row, task_end_col],
+                    'data_labels': {'value': True}
+                })
+                chart_monthly.set_title({'name': f'월간 항목별 부서 실적 ({folder_month})'})
+                chart_monthly.set_x_axis({'name': '세부 업무'})
+                chart_monthly.set_y_axis({'name': '총 업무 건수'})
+                
+                worksheet_monthly.insert_chart(1, len(df_monthly_with_total.columns) + 1, chart_monthly)
+                
+            messagebox.showinfo("취합 성공", f"총 {len(json_files)}건의 파일이 처리되었습니다.\n(Summary 폼 생성 완료)\n\n저장 경로:\n{excel_path}")
+        except ModuleNotFoundError:
+            # xlsxwriter가 없을 경우를 대비하여 엔진 지정 없이 저장
+            messagebox.showwarning("라이브러리 경고", "xlsxwriter 모듈이 설치되어 있지 않아 그래프 생성을 생략합니다.\n명령어 'pip install xlsxwriter'를 입력하시면 그래프 기능이 활성화됩니다.")
+            try:
+                with pd.ExcelWriter(excel_path) as writer:
+                    df_daily.to_excel(writer, sheet_name=date_input, index=False)
+                    df_monthly_with_total.to_excel(writer, sheet_name="월간 요약", index=False)
+            except Exception as e2:
+                messagebox.showerror("엑셀 변환 실패", f"엑셀 저장 중 오류가 발생했습니다: {e2}")
+        except Exception as e:
+            messagebox.showerror("엑셀 변환 실패", f"엑셀 저장 중 오류가 발생했습니다: {e}")
+
+    def export_to_html(self):
+        from html_export import generate_html_report
+        date_input = self.date_var.get().strip()
+        try:
+            date_obj = datetime.strptime(date_input, "%Y-%m-%d")
+            folder_month = date_obj.strftime("%Y-%m")
+            file_date = date_obj.strftime("%Y%m%d")
+        except ValueError:
+            messagebox.showerror("오류", "날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
+            return
+
+        target_dir = os.path.join(LOCAL_BASE_PATH, folder_month)
+        file_pattern = os.path.join(target_dir, "*.json")
+        json_files = glob.glob(file_pattern)
+
+        if not json_files:
+            messagebox.showinfo("안내", f"{folder_month} 월에 저장된 데이터가 없습니다.")
+            return
+
+        all_rows = []
+        for file_path in json_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    row = {"일자": data.get("date", ""), "담당자": data.get("name", ""), "other_progress": data.get("other_progress", "")}
+                    row.update(data.get("tasks", {}))
+                    all_rows.append(row)
+            except Exception as e:
+                print(f"파일 로드 실패 ({file_path}): {e}")
+
+        if not all_rows:
+            messagebox.showinfo("안내", "유효한 데이터가 없습니다.")
+            return
+
+        df_all = pd.DataFrame(all_rows)
+
+        # 라이브 마스터 리스트와 실제 데이터 사용자 통합 및 정렬
+        current_staff_master = load_staff_list()
+        all_unique_users = df_all["담당자"].unique().tolist()
+        ordered_users = current_staff_master + [u for u in all_unique_users if u not in current_staff_master]
+
+        # 1. 데일리 취합 요약 (선택한 날짜 기준)
+        df_daily = df_all[df_all["일자"] == date_input].copy()
+        df_daily.set_index("담당자", inplace=True)
+        df_daily = df_daily.reindex(ordered_users)
+        df_daily.index.name = "담당자"
+        df_daily.reset_index(inplace=True)
+        df_daily.fillna(0, inplace=True)
+
+        # 2. 월간 취합 요약 (해당 월 전체)
+        if "일자" in df_all.columns:
+            df_monthly_base = df_all.drop(columns=["일자"])
+        else:
+            df_monthly_base = df_all
+            
+        # 3. HTML 생성용 딕셔너리 준비
+        daily_dict = df_daily.set_index("담당자").to_dict('index')
+        monthly_dict = df_monthly_base.groupby("담당자").sum(numeric_only=True).to_dict('index')
+
+        # 4. 공통 메모 로드
+        memo_path = os.path.join(target_dir, f"{file_date}_memo.txt")
+        memo_content = ""
+        if os.path.exists(memo_path):
+            try:
+                with open(memo_path, 'r', encoding='utf-8') as f:
+                    memo_content = f.read()
+            except:
+                pass
+
+        out_file, err = generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES)
+        if out_file:
+            messagebox.showinfo("취합 성공", f"HTML 대시보드 리포트 생성이 완료되었습니다.\n\n저장 경로:\n{out_file}")
+        else:
+            messagebox.showerror("HTML 변환 실패", f"HTML 리포트 생성 중 오류가 발생했습니다: {err}")
+
+    def open_settings(self):
+        SettingsWindow(self)
+
+class SettingsWindow:
+    def __init__(self, app):
+        self.app = app
+        self.top = tk.Toplevel(app.root)
+        self.top.title("환경설정")
+        self.top.geometry("500x600")
+
+        self.notebook = ttk.Notebook(self.top)
+        self.notebook.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Tab 1: General Settings (Path)
+        self.general_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.general_frame, text="기본 설정")
+        self.setup_general_tab()
+
+        # Tab 2: Staff
+        self.staff_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.staff_frame, text="담당자 관리")
+        self.setup_staff_tab()
+
+        # Tab 3: Tasks
+        self.task_frame = ttk.Frame(self.notebook)
+        self.notebook.add(self.task_frame, text="세부업무 관리")
+        self.setup_task_tab()
+
+    def setup_general_tab(self):
+        tk.Label(self.general_frame, text="데이터 적재 폴더 위치:", font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(20, 5))
+        path_frame = tk.Frame(self.general_frame)
+        path_frame.pack(fill="x", padx=10)
+        self.path_var = tk.StringVar(value=LOCAL_BASE_PATH)
+        tk.Entry(path_frame, textvariable=self.path_var, state="readonly").pack(side="left", fill="x", expand=True)
+        tk.Button(path_frame, text="폴더 변경...", command=self.browse_path).pack(side="right", padx=(5, 0))
+
+        # 리포트 저장 버튼들
+        report_frame = tk.Frame(self.general_frame)
+        report_frame.pack(fill="x", padx=10, pady=(20, 5))
+        html_btn = tk.Button(report_frame, text="대시보드 HTML 저장", bg="#E91E63", fg="black", font=("Arial", 11, "bold"),
+                             command=self.app.export_to_html)
+        html_btn.pack(side="left", padx=(0, 5))
+        merge_btn = tk.Button(report_frame, text="대시보드 Excel 저장", bg="#2196F3", fg="black", font=("Arial", 11, "bold"),
+                              command=self.app.merge_to_excel)
+        merge_btn.pack(side="left")
+
+    def browse_path(self):
+        from tkinter import filedialog
+        new_path = filedialog.askdirectory(initialdir=LOCAL_BASE_PATH, title="업무일지 저장 폴더 선택")
+        if new_path:
+            self.path_var.set(new_path)
+
+        # Bottom Buttons
+        btn_frame = tk.Frame(self.top)
+        btn_frame.pack(fill="x", pady=10)
+        save_btn = tk.Button(btn_frame, text="저장 및 닫기", bg="#4CAF50", fg="black", font=("Arial", 11, "bold"), command=self.save_settings)
+        save_btn.pack(pady=5)
+
+    def setup_staff_tab(self):
+        # Listbox
+        self.staff_listbox = tk.Listbox(self.staff_frame, height=15)
+        self.staff_listbox.pack(fill="both", expand=True, padx=10, pady=10)
+        for staff in STAFF_LIST:
+            self.staff_listbox.insert(tk.END, staff)
+
+        # Control Frame
+        ctrl_frame = tk.Frame(self.staff_frame)
+        ctrl_frame.pack(fill="x", padx=10, pady=5)
+        
+        self.new_staff_var = tk.StringVar()
+        tk.Entry(ctrl_frame, textvariable=self.new_staff_var).pack(side="left", expand=True, fill="x", padx=5)
+        tk.Button(ctrl_frame, text="추가", command=self.add_staff).pack(side="left", padx=5)
+        tk.Button(ctrl_frame, text="선택 삭제", command=self.delete_staff).pack(side="right", padx=5)
+
+    def add_staff(self):
+        name = self.new_staff_var.get().strip()
+        if name:
+            self.staff_listbox.insert(tk.END, name)
+            self.new_staff_var.set("")
+
+    def delete_staff(self):
+        sel = self.staff_listbox.curselection()
+        if sel:
+            self.staff_listbox.delete(sel[0])
+
+    def setup_task_tab(self):
+        self.task_tree = ttk.Treeview(self.task_frame, columns=("Type",), show="tree headings", height=15)
+        self.task_tree.heading("#0", text="항목명")
+        self.task_tree.heading("Type", text="유형")
+        self.task_tree.column("#0", width=250)
+        self.task_tree.column("Type", width=100)
+        self.task_tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+        for cat, tasks in TASK_CATEGORIES.items():
+            cat_id = self.task_tree.insert("", tk.END, text=cat, values=("카테고리",), open=True)
+            for t in tasks:
+                self.task_tree.insert(cat_id, tk.END, text=t, values=("세부업무",))
+
+        ctrl_frame = tk.Frame(self.task_frame)
+        ctrl_frame.pack(fill="x", padx=10, pady=5)
+        
+        self.new_task_var = tk.StringVar()
+        tk.Entry(ctrl_frame, textvariable=self.new_task_var).pack(side="left", expand=True, fill="x", padx=5)
+        
+        btn_frame2 = tk.Frame(self.task_frame)
+        btn_frame2.pack(fill="x", padx=10, pady=5)
+
+        tk.Button(btn_frame2, text="카테고리 추가", command=self.add_category).pack(side="left", padx=5)
+        tk.Button(btn_frame2, text="세부업무 추가", command=self.add_task).pack(side="left", padx=5)
+        tk.Button(btn_frame2, text="선택 삭제", command=self.delete_task).pack(side="right", padx=5)
+
+    def add_category(self):
+        cat = self.new_task_var.get().strip()
+        if cat:
+            self.task_tree.insert("", tk.END, text=cat, values=("카테고리",), open=True)
+            self.new_task_var.set("")
+
+    def add_task(self):
+        task = self.new_task_var.get().strip()
+        if not task: return
+        sel = self.task_tree.selection()
+        if not sel:
+            messagebox.showwarning("경고", "먼저 추가할 카테고리를 선택해주세요.")
+            return
+        item = sel[0]
+        # Make sure it's a category
+        if self.task_tree.item(item, "values")[0] == "세부업무":
+            item = self.task_tree.parent(item)
+            
+        self.task_tree.insert(item, tk.END, text=task, values=("세부업무",))
+        self.new_task_var.set("")
+
+    def delete_task(self):
+        sel = self.task_tree.selection()
+        if sel:
+            self.task_tree.delete(sel[0])
+
+    def save_settings(self):
+        # Save Path
+        global LOCAL_BASE_PATH
+        new_path = self.path_var.get().strip()
+        if new_path:
+            LOCAL_BASE_PATH = new_path
+            try:
+                config_data = {}
+                if os.path.exists(CONFIG_FILE):
+                    try:
+                        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+                            config_data = json.load(f)
+                    except:
+                        pass
+                config_data["LOCAL_BASE_PATH"] = new_path
+                with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                    json.dump(config_data, f, ensure_ascii=False, indent=4)
+            except Exception as e:
+                messagebox.showerror("오류", f"경로 설정 저장 실패: {e}")
+                return
+
+        # Save Staff
+        new_staff = list(self.staff_listbox.get(0, tk.END))
+        try:
+            with open(STAFF_MASTER_FILE, "w", encoding="utf-8") as f:
+                json.dump(new_staff, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            messagebox.showerror("오류", f"담당자 저장 실패: {e}")
+            return
+
+        # Save Tasks
+        new_tasks = {}
+        for child in self.task_tree.get_children(""):
+            cat_name = self.task_tree.item(child, "text")
+            sub_tasks = []
+            for sub in self.task_tree.get_children(child):
+                sub_tasks.append(self.task_tree.item(sub, "text"))
+            new_tasks[cat_name] = sub_tasks
+        
+        try:
+            with open(TASK_MASTER_FILE, "w", encoding="utf-8") as f:
+                json.dump(new_tasks, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            messagebox.showerror("오류", f"세부업무 저장 실패: {e}")
+            return
+
+        messagebox.showinfo("저장 완료", "설정이 저장되었습니다.\n변경 사항을 적용하려면 프로그램을 다시 실행해주세요.")
+        self.top.destroy()
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = WorkLogApp(root)
+    root.mainloop()
