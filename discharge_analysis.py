@@ -1,6 +1,7 @@
 import os
 import json
 import glob
+import time
 from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
@@ -12,6 +13,75 @@ try:
 except ImportError:
     HAS_TKCALENDAR = False
 
+# --- 동시성 제어 유틸리티 ---
+class FileLock:
+    def __init__(self, filepath, timeout=5):
+        self.filepath = filepath
+        self.lockfile = filepath + ".lock"
+        self.timeout = timeout
+
+    def __enter__(self):
+        start = time.time()
+        while True:
+            try:
+                # 원자적 생성으로 동시 접근 차단
+                fd = os.open(self.lockfile, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.close(fd)
+                break
+            except FileExistsError:
+                if time.time() - start > self.timeout:
+                    raise TimeoutError(f"파일 잠금 대기 시간 초과: 다른 사용자가 사용 중일 수 있습니다.\n({self.filepath})")
+                time.sleep(0.1)
+            except OSError as e:
+                raise e
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            os.remove(self.lockfile)
+        except OSError:
+            pass
+
+def safe_write_json(filepath, data):
+    with FileLock(filepath):
+        tmp_path = filepath + ".tmp"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
+            os.replace(tmp_path, filepath)
+        except Exception as e:
+            if os.path.exists(tmp_path):
+                try: os.remove(tmp_path)
+                except: pass
+            raise e
+
+def safe_read_json(filepath, default=None):
+    with FileLock(filepath):
+        if not os.path.exists(filepath):
+            return default
+        with open(filepath, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+def safe_write_text(filepath, text):
+    with FileLock(filepath):
+        tmp_path = filepath + ".tmp"
+        try:
+            with open(tmp_path, "w", encoding="utf-8") as f:
+                f.write(text)
+            os.replace(tmp_path, filepath)
+        except Exception as e:
+            if os.path.exists(tmp_path):
+                try: os.remove(tmp_path)
+                except: pass
+            raise e
+
+def safe_read_text(filepath, default=""):
+    with FileLock(filepath):
+        if not os.path.exists(filepath):
+            return default
+        with open(filepath, "r", encoding="utf-8") as f:
+            return f.read()
+# ------------------------------
 
 # 1. 고정 설정 (로컬 테스트용 폴더 경로 및 부서원 리스트)
 CONFIG_FILE = os.path.join(os.getcwd(), "config.json")
@@ -27,54 +97,70 @@ def load_config():
 
 config = load_config()
 LOCAL_BASE_PATH = config.get("LOCAL_BASE_PATH", os.path.join(os.getcwd(), "업무일지_테스트"))
+os.makedirs(LOCAL_BASE_PATH, exist_ok=True)
 
-STAFF_MASTER_FILE = os.path.join(os.getcwd(), "staff_master.json")
+STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "staff_master.json")
 LAST_USER_FILE = os.path.join(os.getcwd(), "last_user.txt")
 
 def load_staff_list():
     default_staff = [
-        "고미경", "이용화", "김산들", "조선옥", "김성진",
-        "박찬용", "강민정", "성수지", "유민지", "이루른", "이은혜"
+        "이지연", "신준호", "박선우", "박유진", "박연정",
+        "이재희", "김정현", "이윤혜", "박민영"
     ]
-    if os.path.exists(STAFF_MASTER_FILE):
-        try:
-            with open(STAFF_MASTER_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"마스터 파일 로드 실패: {e}")
-            return default_staff
-    else:
-        try:
-            with open(STAFF_MASTER_FILE, "w", encoding="utf-8") as f:
-                json.dump(default_staff, f, ensure_ascii=False, indent=4)
-        except Exception as e:
-            print(f"마스터 파일 생성 실패: {e}")
-        return default_staff
+    try:
+        loaded = safe_read_json(STAFF_MASTER_FILE, default=None)
+        if loaded is not None:
+            return loaded
+    except Exception as e:
+        print(f"마스터 파일 로드 실패: {e}")
+        
+    try:
+        safe_write_json(STAFF_MASTER_FILE, default_staff)
+    except Exception as e:
+        print(f"마스터 파일 생성 실패: {e}")
+    return default_staff
 
 STAFF_LIST = load_staff_list()
 
-TASK_MASTER_FILE = os.path.join(os.getcwd(), "task_master.json")
+TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "task_master.json")
 
 def load_task_list():
     default_tasks = {
-        "코딩": ["진코딩", "가코딩", "Confirm", "재원코딩", "DRG_확정", "DRG_임시", "Pathology"],
-        "모니터링": ["외래_모니터링", "퇴원_모니터링", "응급_모니터링", "POA_질지표"],
-        "문서작업": ["인증서_발급", "서식_생성", "서식_수정"]
+        "퇴원": [
+            "퇴원분석",
+            "pathology 확인",
+            "미비정리"
+        ],
+        "재원": [
+            "특수서식",
+            "경과기록",
+            "미비정리"
+        ],
+        "차트검수": [
+            "차트검수"
+        ],
+        "모니터링": [
+            "외래",
+            "응급",
+            "입원"
+        ],
+        "코딩": [
+            "진코딩",
+            "가코딩"
+        ]
     }
-    if os.path.exists(TASK_MASTER_FILE):
-        try:
-            with open(TASK_MASTER_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as e:
-            print(f"세부 업무 마스터 파일 로드 실패: {e}")
-            return default_tasks
-    else:
-        try:
-            with open(TASK_MASTER_FILE, "w", encoding="utf-8") as f:
-                json.dump(default_tasks, f, ensure_ascii=False, indent=4)
-        except Exception as e:
-            print(f"세부 업무 마스터 파일 생성 실패: {e}")
-        return default_tasks
+    try:
+        loaded = safe_read_json(TASK_MASTER_FILE, default=None)
+        if loaded is not None:
+            return loaded
+    except Exception as e:
+        print(f"세부 업무 마스터 파일 로드 실패: {e}")
+        
+    try:
+        safe_write_json(TASK_MASTER_FILE, default_tasks)
+    except Exception as e:
+        print(f"세부 업무 마스터 파일 생성 실패: {e}")
+    return default_tasks
 
 TASK_CATEGORIES = load_task_list()
 
@@ -158,8 +244,8 @@ class WorkLogApp:
         sep = ttk.Separator(memo_header, orient="horizontal")
         sep.pack(side="left", fill="x", expand=True, padx=5)
 
-        tk.Button(memo_header, text="저장하기", command=self.save_memo, bg="#4CAF50", fg="black", font=("Arial", 9, "bold")).pack(side="right", padx=2)
-        tk.Button(memo_header, text="불러오기", command=self.load_memo, bg="#FF9800", fg="black", font=("Arial", 9, "bold")).pack(side="right", padx=2)
+        tk.Button(memo_header, text="저장하기", command=self.save_memo, font=("Arial", 9)).pack(side="right", padx=2)
+        tk.Button(memo_header, text="불러오기", command=self.load_memo, font=("Arial", 9)).pack(side="right", padx=2)
         memo_frame.config(labelwidget=memo_header)
 
         self.memo_text = tk.Text(memo_frame, height=3, width=50)
@@ -254,17 +340,17 @@ class WorkLogApp:
         btn_frame.pack(fill="x", padx=20, pady=15)
 
         # 불러오기 버튼
-        refresh_btn = tk.Button(btn_frame, text="최신 데이터 불러오기", bg="#FF9800", fg="black", font=("Arial", 11, "bold"),
+        refresh_btn = tk.Button(btn_frame, text="최신 데이터 불러오기", font=("Arial", 11),
                                 width=22, command=self.refresh_data)
         refresh_btn.pack(side="left", padx=5, expand=True)
 
         # 저장 버튼 (개별 PC용)
-        save_btn = tk.Button(btn_frame, text="내 실적 저장하기", bg="#4CAF50", fg="black", font=("Arial", 11, "bold"),
+        save_btn = tk.Button(btn_frame, text="내 실적 저장하기", font=("Arial", 11),
                              width=22, command=self.save_data)
         save_btn.pack(side="left", padx=5, expand=True)
 
         # 미리보기 버튼
-        preview_btn = tk.Button(btn_frame, text="미리보기", bg="#9C27B0", fg="black", font=("Arial", 11, "bold"),
+        preview_btn = tk.Button(btn_frame, text="미리보기", font=("Arial", 11),
                                 width=22, command=self.preview_html)
         preview_btn.pack(side="left", padx=5, expand=True)
 
@@ -322,15 +408,11 @@ class WorkLogApp:
         }
 
         try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, indent=4)
-                
-            # 공통 주요사항 저장은 분리되었으므로 여기서는 내 실적만 저장
+            safe_write_json(file_path, payload)
                 
             # 마지막 사용 담당자 기억
             try:
-                with open(LAST_USER_FILE, "w", encoding="utf-8") as f:
-                    f.write(user_name)
+                safe_write_text(LAST_USER_FILE, user_name)
             except:
                 pass
                 
@@ -358,8 +440,8 @@ class WorkLogApp:
         all_rows = []
         for file_path in json_files:
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                data = safe_read_json(file_path)
+                if data:
                     row = {"일자": data.get("date", ""), "담당자": data.get("name", ""), "other_progress": data.get("other_progress", "")}
                     row.update(data.get("tasks", {}))
                     all_rows.append(row)
@@ -461,8 +543,8 @@ class WorkLogApp:
             file_path = os.path.join(target_dir, f"{file_date}_{user_name}.json")
             if os.path.exists(file_path):
                 try:
-                    with open(file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
+                    data = safe_read_json(file_path)
+                    if data:
                         tasks = data.get("tasks", {})
                         for k, v in tasks.items():
                             if k in self.entries:
@@ -490,8 +572,9 @@ class WorkLogApp:
         self.memo_text.delete("1.0", tk.END)
         if os.path.exists(memo_path):
             try:
-                with open(memo_path, 'r', encoding='utf-8') as f:
-                    self.memo_text.insert("1.0", f.read().strip())
+                memo_content = safe_read_text(memo_path)
+                if memo_content:
+                    self.memo_text.insert("1.0", memo_content.strip())
                 if not silent: messagebox.showinfo("불러오기 완료", "공통 주요사항을 성공적으로 불러왔습니다.")
             except Exception as e:
                 if not silent: messagebox.showerror("오류", f"메모 불러오기 실패: {e}")
@@ -513,8 +596,7 @@ class WorkLogApp:
         
         memo_path = os.path.join(target_dir, f"{file_date}_memo.txt")
         try:
-            with open(memo_path, "w", encoding="utf-8") as f:
-                f.write(self.memo_text.get("1.0", tk.END).strip())
+            safe_write_text(memo_path, self.memo_text.get("1.0", tk.END).strip())
             messagebox.showinfo("저장 성공", "공통 주요사항이 성공적으로 저장되었습니다.")
         except Exception as e:
             messagebox.showerror("저장 실패", f"메모 저장 중 오류가 발생했습니다: {e}")
@@ -541,8 +623,8 @@ class WorkLogApp:
         all_rows = []
         for file_path in json_files:
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                data = safe_read_json(file_path)
+                if data:
                     row = {"일자": data.get("date", ""), "담당자": data.get("name", ""), "other_progress": data.get("other_progress", "")}
                     row.update(data.get("tasks", {}))
                     all_rows.append(row)
@@ -755,8 +837,8 @@ class WorkLogApp:
         all_rows = []
         for file_path in json_files:
             try:
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+                data = safe_read_json(file_path)
+                if data:
                     row = {"일자": data.get("date", ""), "담당자": data.get("name", ""), "other_progress": data.get("other_progress", "")}
                     row.update(data.get("tasks", {}))
                     all_rows.append(row)
@@ -797,8 +879,9 @@ class WorkLogApp:
         memo_content = ""
         if os.path.exists(memo_path):
             try:
-                with open(memo_path, 'r', encoding='utf-8') as f:
-                    memo_content = f.read()
+                content = safe_read_text(memo_path)
+                if content:
+                    memo_content = content
             except:
                 pass
 
@@ -847,10 +930,10 @@ class SettingsWindow:
         # 리포트 저장 버튼들
         report_frame = tk.Frame(self.general_frame)
         report_frame.pack(fill="x", padx=10, pady=(20, 5))
-        html_btn = tk.Button(report_frame, text="대시보드 HTML 저장", bg="#E91E63", fg="black", font=("Arial", 11, "bold"),
+        html_btn = tk.Button(report_frame, text="대시보드 HTML 저장", font=("Arial", 11),
                              command=self.app.export_to_html)
         html_btn.pack(side="left", padx=(0, 5))
-        merge_btn = tk.Button(report_frame, text="대시보드 Excel 저장", bg="#2196F3", fg="black", font=("Arial", 11, "bold"),
+        merge_btn = tk.Button(report_frame, text="대시보드 Excel 저장", font=("Arial", 11),
                               command=self.app.merge_to_excel)
         merge_btn.pack(side="left")
 
@@ -863,7 +946,7 @@ class SettingsWindow:
         # Bottom Buttons
         btn_frame = tk.Frame(self.top)
         btn_frame.pack(fill="x", pady=10)
-        save_btn = tk.Button(btn_frame, text="저장 및 닫기", bg="#4CAF50", fg="black", font=("Arial", 11, "bold"), command=self.save_settings)
+        save_btn = tk.Button(btn_frame, text="저장 및 닫기", font=("Arial", 11), command=self.save_settings)
         save_btn.pack(pady=5)
 
     def setup_staff_tab(self):
@@ -952,16 +1035,9 @@ class SettingsWindow:
         if new_path:
             LOCAL_BASE_PATH = new_path
             try:
-                config_data = {}
-                if os.path.exists(CONFIG_FILE):
-                    try:
-                        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                            config_data = json.load(f)
-                    except:
-                        pass
+                config_data = safe_read_json(CONFIG_FILE, default={})
                 config_data["LOCAL_BASE_PATH"] = new_path
-                with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                    json.dump(config_data, f, ensure_ascii=False, indent=4)
+                safe_write_json(CONFIG_FILE, config_data)
             except Exception as e:
                 messagebox.showerror("오류", f"경로 설정 저장 실패: {e}")
                 return
@@ -969,8 +1045,7 @@ class SettingsWindow:
         # Save Staff
         new_staff = list(self.staff_listbox.get(0, tk.END))
         try:
-            with open(STAFF_MASTER_FILE, "w", encoding="utf-8") as f:
-                json.dump(new_staff, f, ensure_ascii=False, indent=4)
+            safe_write_json(STAFF_MASTER_FILE, new_staff)
         except Exception as e:
             messagebox.showerror("오류", f"담당자 저장 실패: {e}")
             return
@@ -985,8 +1060,7 @@ class SettingsWindow:
             new_tasks[cat_name] = sub_tasks
         
         try:
-            with open(TASK_MASTER_FILE, "w", encoding="utf-8") as f:
-                json.dump(new_tasks, f, ensure_ascii=False, indent=4)
+            safe_write_json(TASK_MASTER_FILE, new_tasks)
         except Exception as e:
             messagebox.showerror("오류", f"세부업무 저장 실패: {e}")
             return
