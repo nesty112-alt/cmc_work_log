@@ -22,7 +22,7 @@ jobs:
       - name: 패키지 설치
         run: |
           python -m pip install --upgrade pip
-          pip install pyinstaller pyautogui pyperclip pillow pystray opencv-python pywin32 tkcalendar pywinauto
+          pip install pandas tkcalendar xlsxwriter
 
       - name: exe 빌드
         # 대상 파일을 main.py에서 discharge_analysis.py로 변경
