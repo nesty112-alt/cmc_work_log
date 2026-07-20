@@ -896,8 +896,27 @@ def load_config():
             pass
     return {"LOCAL_BASE_PATH": ""}
 
+import threading
+
+def is_path_accessible(path, timeout=1.5):
+    if not path:
+        return False
+    result = [False]
+    def check():
+        try:
+            result[0] = os.path.exists(path)
+        except:
+            pass
+    t = threading.Thread(target=check, daemon=True)
+    t.start()
+    t.join(timeout)
+    return result[0]
+
 config = load_config()
 LOCAL_BASE_PATH = config.get("LOCAL_BASE_PATH", "")
+
+if LOCAL_BASE_PATH and not is_path_accessible(LOCAL_BASE_PATH):
+    LOCAL_BASE_PATH = ""
 
 LAST_USER_FILE = os.path.join(BASE_DIR, "last_user.txt")
 
