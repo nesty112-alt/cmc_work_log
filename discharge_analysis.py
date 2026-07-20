@@ -847,7 +847,8 @@ def safe_read_text(filepath, default=""):
 # ------------------------------
 
 # 1. 고정 설정 (로컬 테스트용 폴더 경로 및 부서원 리스트)
-CONFIG_FILE = os.path.join(os.getcwd(), "backup/config.json")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+CONFIG_FILE = os.path.join(BASE_DIR, "backup/config.json")
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -861,7 +862,7 @@ def load_config():
 config = load_config()
 LOCAL_BASE_PATH = config.get("LOCAL_BASE_PATH", "")
 
-LAST_USER_FILE = os.path.join(os.getcwd(), "last_user.txt")
+LAST_USER_FILE = os.path.join(BASE_DIR, "last_user.txt")
 
 if LOCAL_BASE_PATH:
     STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "master/staff_master.json")
@@ -1381,7 +1382,11 @@ class WorkLogApp:
         df_daily = df_daily.reindex(ordered_users)
         df_daily.index.name = "담당자"
         df_daily.reset_index(inplace=True)
-        df_daily.fillna(0, inplace=True)
+        for col in df_daily.columns:
+            if col in ["일자", "담당자", "other_progress"]:
+                df_daily[col] = df_daily[col].fillna("")
+            else:
+                df_daily[col] = df_daily[col].fillna(0)
 
         # 2. 월간 취합 요약 (해당 월 전체)
         if "일자" in df_all.columns:
@@ -1553,7 +1558,11 @@ class WorkLogApp:
         df_daily.index.name = "담당자"
         df_daily.reset_index(inplace=True)
         df_daily["일자"] = df_daily["일자"].fillna(date_input)
-        df_daily.fillna(0, inplace=True)
+        for col in df_daily.columns:
+            if col in ["일자", "담당자", "other_progress"]:
+                df_daily[col] = df_daily[col].fillna("")
+            else:
+                df_daily[col] = df_daily[col].fillna(0)
 
         # 2. 월간 취합 요약 (해당 월 전체 담당자별 합계)
         if "일자" in df_all.columns:
@@ -1565,7 +1574,11 @@ class WorkLogApp:
         df_monthly = df_monthly.reindex(ordered_users)
         df_monthly.index.name = "담당자"
         df_monthly.reset_index(inplace=True)
-        df_monthly.fillna(0, inplace=True)
+        for col in df_monthly.columns:
+            if col in ["담당자"]:
+                df_monthly[col] = df_monthly[col].fillna("")
+            else:
+                df_monthly[col] = df_monthly[col].fillna(0)
 
         # 3. Summary 탭용 딕셔너리 준비
         daily_dict = df_daily.set_index("담당자").to_dict('index')
@@ -1706,9 +1719,14 @@ class WorkLogApp:
                 worksheet_monthly.insert_chart(1, len(df_monthly_with_total.columns) + 1, chart_monthly)
                 
             messagebox.showinfo("취합 성공", f"총 {len(json_files)}건의 파일이 처리되었습니다.\n(Summary 폼 생성 완료)\n\n저장 경로:\n{excel_path}")
-            # 저장 후 자동 실행 (macOS)
-            import subprocess
-            subprocess.Popen(['open', excel_path])
+            # 저장 후 자동 실행 (크로스 플랫폼)
+            import sys, subprocess
+            if sys.platform == "win32":
+                os.startfile(excel_path)
+            elif sys.platform == "darwin":
+                subprocess.Popen(['open', excel_path])
+            else:
+                subprocess.Popen(['xdg-open', excel_path])
         except ModuleNotFoundError:
             # xlsxwriter가 없을 경우를 대비하여 엔진 지정 없이 저장
             messagebox.showwarning("라이브러리 경고", "xlsxwriter 모듈이 설치되어 있지 않아 그래프 생성을 생략합니다.\n명령어 'pip install xlsxwriter'를 입력하시면 그래프 기능이 활성화됩니다.")
@@ -1717,8 +1735,13 @@ class WorkLogApp:
                     df_daily.to_excel(writer, sheet_name=date_input, index=False)
                     df_monthly_with_total.to_excel(writer, sheet_name="월간 요약", index=False)
                 messagebox.showinfo("취합 성공", f"총 {len(json_files)}건의 파일이 처리되었습니다.\n\n저장 경로:\n{excel_path}")
-                import subprocess
-                subprocess.Popen(['open', excel_path])
+                import sys, subprocess
+                if sys.platform == "win32":
+                    os.startfile(excel_path)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(['open', excel_path])
+                else:
+                    subprocess.Popen(['xdg-open', excel_path])
             except Exception as e2:
                 messagebox.showerror("엑셀 변환 실패", f"엑셀 저장 중 오류가 발생했습니다: {e2}")
         except Exception as e:
@@ -1771,7 +1794,11 @@ class WorkLogApp:
         df_daily = df_daily.reindex(ordered_users)
         df_daily.index.name = "담당자"
         df_daily.reset_index(inplace=True)
-        df_daily.fillna(0, inplace=True)
+        for col in df_daily.columns:
+            if col in ["일자", "담당자", "other_progress"]:
+                df_daily[col] = df_daily[col].fillna("")
+            else:
+                df_daily[col] = df_daily[col].fillna(0)
 
         # 2. 월간 취합 요약 (해당 월 전체)
         if "일자" in df_all.columns:
@@ -1841,6 +1868,12 @@ class SettingsWindow:
         self.notebook.add(self.task_frame, text="세부업무 관리")
         self.setup_task_tab()
 
+        # Bottom Buttons
+        btn_frame = tk.Frame(self.top)
+        btn_frame.pack(fill="x", pady=10)
+        save_btn = tk.Button(btn_frame, text="저장 및 닫기", font=("Arial", 11), command=self.save_settings)
+        save_btn.pack(pady=5)
+
     def setup_general_tab(self):
         tk.Label(self.general_frame, text="데이터 적재 폴더 위치:", font=("Arial", 10, "bold")).pack(anchor="w", padx=10, pady=(20, 5))
         path_frame = tk.Frame(self.general_frame)
@@ -1861,15 +1894,9 @@ class SettingsWindow:
 
     def browse_path(self):
         from tkinter import filedialog
-        new_path = filedialog.askdirectory(initialdir=LOCAL_BASE_PATH, title="업무일지 저장 폴더 선택")
+        new_path = filedialog.askdirectory(parent=self.top, initialdir=LOCAL_BASE_PATH, title="업무일지 저장 폴더 선택")
         if new_path:
             self.path_var.set(new_path)
-
-        # Bottom Buttons
-        btn_frame = tk.Frame(self.top)
-        btn_frame.pack(fill="x", pady=10)
-        save_btn = tk.Button(btn_frame, text="저장 및 닫기", font=("Arial", 11), command=self.save_settings)
-        save_btn.pack(pady=5)
 
     def setup_staff_tab(self):
         # Listbox
