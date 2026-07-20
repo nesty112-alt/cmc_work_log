@@ -127,7 +127,12 @@ def load_staff_list():
     ]
     if not STAFF_MASTER_FILE:
         return default_staff
+        
     try:
+        os.makedirs(os.path.dirname(STAFF_MASTER_FILE), exist_ok=True)
+    except Exception:
+        pass
+
         loaded = safe_read_json(STAFF_MASTER_FILE, default=None)
         if loaded is not None:
             return loaded
@@ -142,7 +147,6 @@ def load_staff_list():
 
 STAFF_LIST = load_staff_list()
 
-TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "backup/task_master.json")
 
 def load_task_list():
     default_tasks = {
@@ -171,6 +175,12 @@ def load_task_list():
     }
     if not TASK_MASTER_FILE:
         return default_tasks
+        
+    try:
+        os.makedirs(os.path.dirname(TASK_MASTER_FILE), exist_ok=True)
+    except Exception:
+        pass
+        
     try:
         loaded = safe_read_json(TASK_MASTER_FILE, default=None)
         if loaded is not None:
