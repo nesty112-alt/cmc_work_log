@@ -9,7 +9,12 @@ def send_naver_works_message(api_base_url, secret_key, bot_id, target_email, rep
         print("[오류] NAVER_WORKS_API_URL이 설정되지 않아 네이버웍스 메시지를 발송할 수 없습니다.")
         return False
 
-    java_executable = os.path.join(BASE_DIR, "../jdk-17.0.12+7", "Contents", "Home", "bin", "java")
+    import sys
+    if sys.platform == "win32":
+        java_executable = os.path.join(BASE_DIR, "../jdk-17.0.12+7", "bin", "java.exe")
+    else:
+        java_executable = os.path.join(BASE_DIR, "../jdk-17.0.12+7", "Contents", "Home", "bin", "java")
+        
     if not os.path.exists(java_executable):
         java_executable = "java"
         
@@ -25,7 +30,11 @@ def send_naver_works_message(api_base_url, secret_key, bot_id, target_email, rep
     
     # 1. Compile the Java file if NaverWorksSender.class does not exist
     if not os.path.exists(os.path.join(BASE_DIR, "NaverWorksSender.class")):
-        javac_executable = os.path.join(BASE_DIR, "../jdk-17.0.12+7", "Contents", "Home", "bin", "javac")
+        if sys.platform == "win32":
+            javac_executable = os.path.join(BASE_DIR, "../jdk-17.0.12+7", "bin", "javac.exe")
+        else:
+            javac_executable = os.path.join(BASE_DIR, "../jdk-17.0.12+7", "Contents", "Home", "bin", "javac")
+            
         if not os.path.exists(javac_executable):
             javac_executable = "javac"
         compile_cmd = [javac_executable, "-cp", classpath, "NaverWorksSender.java"]
