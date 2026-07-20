@@ -25,12 +25,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    - name: Build Standalone EXE with PyInstaller
+    - name: Build Program Directory with PyInstaller
       run: |
-        pyinstaller --noconfirm --onefile --windowed --add-data "static;static" --hidden-import=xlsxwriter --hidden-import=openpyxl --name "discharge_analysis" discharge_analysis.py
+        pyinstaller --noconfirm --onedir --windowed --add-data "static;static" --hidden-import=xlsxwriter --hidden-import=openpyxl --name "discharge_analysis" discharge_analysis.py
 
-    - name: Upload Standalone EXE Artifact
+    - name: Upload Program Folder Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: discharge_analysis_exe
-        path: dist/discharge_analysis.exe
+        name: discharge_analysis_program
+        path: dist/discharge_analysis/
