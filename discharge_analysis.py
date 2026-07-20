@@ -114,8 +114,8 @@ LOCAL_BASE_PATH = config.get("LOCAL_BASE_PATH", "")
 LAST_USER_FILE = os.path.join(os.getcwd(), "last_user.txt")
 
 if LOCAL_BASE_PATH:
-    STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "staff_master.json")
-    TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "task_master.json")
+    STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "master/staff_master.json")
+    TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "master/task_master.json")
 else:
     STAFF_MASTER_FILE = ""
     TASK_MASTER_FILE = ""
@@ -654,7 +654,9 @@ class WorkLogApp:
                 except:
                     pass
 
-        out_file, err = generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=True)
+        html_target_dir = os.path.join(LOCAL_BASE_PATH, "html report", folder_month, date_input)
+        os.makedirs(html_target_dir, exist_ok=True)
+        out_file, err = generate_html_report(date_input, html_target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=True)
         if err:
             messagebox.showerror("미리보기 실패", f"미리보기 생성 중 오류가 발생했습니다: {err}")
 
@@ -1037,7 +1039,9 @@ class WorkLogApp:
             except:
                 pass
 
-        out_file, err = generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES)
+        html_target_dir = os.path.join(LOCAL_BASE_PATH, "html report", folder_month, date_input)
+        os.makedirs(html_target_dir, exist_ok=True)
+        out_file, err = generate_html_report(date_input, html_target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES)
         if out_file:
             messagebox.showinfo("취합 성공", f"HTML 대시보드 리포트 생성이 완료되었습니다.\n\n저장 경로:\n{out_file}")
         else:
@@ -1187,8 +1191,8 @@ class SettingsWindow:
         if new_path:
             LOCAL_BASE_PATH = new_path
             os.makedirs(LOCAL_BASE_PATH, exist_ok=True)
-            STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "staff_master.json")
-            TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "task_master.json")
+            STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "master/staff_master.json")
+            TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "master/task_master.json")
             try:
                 os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
                 config_data = safe_read_json(CONFIG_FILE, default={})
