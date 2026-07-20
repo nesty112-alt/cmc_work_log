@@ -97,7 +97,7 @@ def safe_read_text(filepath, default=""):
 # ------------------------------
 
 # 1. 고정 설정 (로컬 테스트용 폴더 경로 및 부서원 리스트)
-CONFIG_FILE = os.path.join(os.getcwd(), "config.json")
+CONFIG_FILE = os.path.join(os.getcwd(), "backup/config.json")
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
@@ -142,7 +142,7 @@ def load_staff_list():
 
 STAFF_LIST = load_staff_list()
 
-TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "task_master.json")
+TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "backup/task_master.json")
 
 def load_task_list():
     default_tasks = {
@@ -547,6 +547,7 @@ class WorkLogApp:
         import importlib
         importlib.reload(html_export)
         generate_html_report = html_export.generate_html_report
+
         date_input = self.date_var.get().strip()
         try:
             date_obj = datetime.strptime(date_input, "%Y-%m-%d")
@@ -957,6 +958,7 @@ class WorkLogApp:
 
     def export_to_html(self):
         from html_export import generate_html_report
+            
         date_input = self.date_var.get().strip()
         try:
             date_obj = datetime.strptime(date_input, "%Y-%m-%d")
@@ -1175,8 +1177,8 @@ class SettingsWindow:
         if new_path:
             LOCAL_BASE_PATH = new_path
             os.makedirs(LOCAL_BASE_PATH, exist_ok=True)
-            STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "staff_master.json")
-            TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "task_master.json")
+            STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "backup/staff_master.json")
+            TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "backup/task_master.json")
             try:
                 config_data = safe_read_json(CONFIG_FILE, default={})
                 config_data["LOCAL_BASE_PATH"] = new_path
