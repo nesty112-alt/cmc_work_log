@@ -27,7 +27,7 @@ jobs:
 
     - name: Build Standalone EXE with PyInstaller
       run: |
-        pyinstaller --noconfirm --onefile --windowed --name "discharge_analysis" discharge_analysis.py
+        pyinstaller --noconfirm --onefile --windowed --hidden-import=xlsxwriter --hidden-import=openpyxl --name "discharge_analysis" discharge_analysis.py
 
     - name: Upload Standalone EXE Artifact
       uses: actions/upload-artifact@v4
