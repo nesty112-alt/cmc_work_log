@@ -1,28 +1,36 @@
 name: Build Windows Executable
+
 on:
   push:
     branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
+
 jobs:
   build:
     runs-on: windows-latest
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
-        python-version: '3.11' 
+        python-version: '3.11'
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pyinstaller
-    - name: Build with PyInstaller
+
+    - name: Build Standalone EXE with PyInstaller
       run: |
-        pyinstaller --noconfirm --onedir --windowed discharge_analysis.py
-    - name: Upload Artifact
+        pyinstaller --noconfirm --onefile --windowed --name "discharge_analysis" discharge_analysis.py
+
+    - name: Upload Standalone EXE Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: Windows-App-Build
-        path: dist/discharge_analysis/
+        name: discharge_analysis_exe
+        path: dist/discharge_analysis.exe

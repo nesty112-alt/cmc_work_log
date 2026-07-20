@@ -1,1 +1,5 @@
 pandas
+xlsxwriter
+openpyxl
+tkcalendar
+pyinstaller
