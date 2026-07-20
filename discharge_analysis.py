@@ -982,8 +982,14 @@ class WorkLogApp:
         self.root.title("재원점검 퇴원분석 업무일지")
         self.root.geometry("1000x950")
 
+        self.entries = {}
+        self.root.withdraw()
+        self.root.after(100, self.startup_check)
+
+    def startup_check(self):
+        global STAFF_LIST, TASK_CATEGORIES
+        
         if not LOCAL_BASE_PATH or not os.path.exists(LOCAL_BASE_PATH):
-            self.root.withdraw()
             if not LOCAL_BASE_PATH:
                 messagebox.showwarning("필수 설정 안내", "최초 실행 시 데이터 적재 폴더(공유 폴더) 설정이 필요합니다.\n설정을 완료해야 프로그램을 사용할 수 있습니다.")
             else:
@@ -996,12 +1002,9 @@ class WorkLogApp:
                 self.root.destroy()
                 return
                 
-            global STAFF_LIST, TASK_CATEGORIES
             STAFF_LIST = load_staff_list()
             TASK_CATEGORIES = load_task_list()
-            self.root.deiconify()
 
-        self.entries = {}
         self.create_widgets()
         
         # macOS 복사/붙여넣기 단축키 지원 (Command+C, Command+V 등)
@@ -1017,6 +1020,9 @@ class WorkLogApp:
 
         # 우클릭 메뉴 설정
         self.setup_context_menu()
+        self.root.deiconify()
+
+
 
     def setup_context_menu(self):
         self.context_menu = tk.Menu(self.root, tearoff=0)
