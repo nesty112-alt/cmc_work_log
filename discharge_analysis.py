@@ -21,7 +21,13 @@ import urllib.request
 import urllib.parse
 import base64
 
+QUICKCHART_OFFLINE = False
+
 def get_quickchart_b64(chart_config):
+    global QUICKCHART_OFFLINE
+    if QUICKCHART_OFFLINE:
+        return ""
+        
     url = "https://quickchart.io/chart"
     payload = {
         "backgroundColor": "white",
@@ -34,12 +40,13 @@ def get_quickchart_b64(chart_config):
     try:
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=1.5) as response:
             image_data = response.read()
             b64 = base64.b64encode(image_data).decode('utf-8')
             return f"data:image/png;base64,{b64}"
     except Exception as e:
         print("QuickChart fallback error:", e)
+        QUICKCHART_OFFLINE = True
         return ""
 
 # 업무 종류별 컬러 팔레트 (차트 렌더링용)
@@ -266,6 +273,23 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
     if not memo_html:
         memo_html = "<li>입력된 주요사항이 없습니다.</li>"
 
+    # ------------------ 오프라인 차트 렌더링용 로컬 JS 로드 ------------------
+    def get_resource_path(rel_path):
+        import sys, os
+        if hasattr(sys, '_MEIPASS'):
+            return os.path.join(sys._MEIPASS, rel_path)
+        return os.path.join(os.path.dirname(os.path.abspath(__file__)), rel_path)
+
+    chart_js = ""
+    datalabels_js = ""
+    try:
+        with open(get_resource_path("static/chart.min.js"), "r", encoding="utf-8") as f:
+            chart_js = f.read()
+        with open(get_resource_path("static/chartjs-plugin-datalabels.min.js"), "r", encoding="utf-8") as f:
+            datalabels_js = f.read()
+    except Exception as e:
+        print("로컬 JS 라이브러리 로드 실패:", e)
+
     # ------------------ 전체 HTML 템플릿 ------------------
     html_content = f"""<!DOCTYPE html>
 <html lang="ko">
@@ -275,9 +299,9 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
     <title>업무대시보드 - {date_input}</title>
     <!-- Pretendard 폰트 -->
     <link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.8/dist/web/static/pretendard.css" />
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+    <!-- Chart.js (오프라인 지원용 로컬 삽입) -->
+    <script>{chart_js}</script>
+    <script>{datalabels_js}</script>
     <style>
         :root {{
             --primary-color: #3B82F6;
