@@ -100,6 +100,29 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
                 "backgroundColor": task_colors[unique_key]
             })
 
+    # ------------------ 업무별 차트 데이터 (신규) ------------------
+    task_labels = []
+    task_daily_totals = []
+    task_monthly_totals = []
+    task_bar_colors = []
+    for unique_key, t, cat in all_tasks:
+        d_total = 0
+        m_total = 0
+        for staff in staff_list:
+            v_d = daily_dict.get(staff, {}).get(unique_key, daily_dict.get(staff, {}).get(t, 0))
+            if v_d: d_total += int(float(v_d))
+            v_m = monthly_dict.get(staff, {}).get(unique_key, monthly_dict.get(staff, {}).get(t, 0))
+            if v_m: m_total += int(float(v_m))
+        
+        if d_total > 0 or m_total > 0:
+            task_labels.append(t)
+            task_daily_totals.append(d_total)
+            task_monthly_totals.append(m_total)
+            task_bar_colors.append(task_colors[unique_key])
+
+    task_daily_datasets = [{"label": "일일 합계", "data": task_daily_totals, "backgroundColor": task_bar_colors}]
+    task_monthly_datasets = [{"label": "누적 합계", "data": task_monthly_totals, "backgroundColor": task_bar_colors}]
+
     # ------------------ QuickChart 대체 이미지 생성 ------------------
     # JS 실행이 차단된 모바일 뷰어를 위한 정적 Base64 이미지
     qc_daily_config = {
@@ -112,7 +135,7 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
             },
             "scales": {
                 "x": { "stacked": True },
-                "y": { "stacked": True, "suggestedMax": 300 }
+                "y": { "stacked": True }
             }
         }
     }
@@ -128,11 +151,39 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
             },
             "scales": {
                 "x": { "stacked": True },
-                "y": { "stacked": True, "suggestedMax": 3500 }
+                "y": { "stacked": True }
             }
         }
     }
     monthly_b64 = get_quickchart_b64(qc_monthly_config)
+
+    qc_task_daily_config = {
+        "type": "bar",
+        "data": { "labels": task_labels, "datasets": task_daily_datasets },
+        "options": {
+            "plugins": {
+                "legend": { "display": False },
+                "datalabels": { "color": "#4b5563", "anchor": "end", "align": "top", "font": { "weight": "bold", "size": 11 } }
+            },
+            "scales": { "y": { "beginAtZero": True } },
+            "layout": { "padding": { "top": 20 } }
+        }
+    }
+    task_daily_b64 = get_quickchart_b64(qc_task_daily_config)
+
+    qc_task_monthly_config = {
+        "type": "bar",
+        "data": { "labels": task_labels, "datasets": task_monthly_datasets },
+        "options": {
+            "plugins": {
+                "legend": { "display": False },
+                "datalabels": { "color": "#4b5563", "anchor": "end", "align": "top", "font": { "weight": "bold", "size": 11 } }
+            },
+            "scales": { "y": { "beginAtZero": True } },
+            "layout": { "padding": { "top": 20 } }
+        }
+    }
+    task_monthly_b64 = get_quickchart_b64(qc_task_monthly_config)
 
     # ------------------ 통합 범례(Legend) 생성 ------------------
     custom_legend_html = '<div class="custom-legend">'
@@ -467,12 +518,12 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
         </ul>
     </div>
 
-    <!-- 차트 영역 -->
-    <div class="section-title">업무 실적 분석 (일계 vs 누계 비교)</div>
+    <!-- 담당자별 차트 영역 -->
+    <div class="section-title">담당자별 실적 분석 (일계 vs 누계 비교)</div>
     <div class="chart-grid">
         <div class="chart-card">
             <div class="chart-title">
-                <div>📅 금일 업무 현황 (일계)</div>
+                <div>📅 담당자별 금일 업무 현황 (일계)</div>
             </div>
             <div class="chart-container-inner">
                 {f'<img id="dailyChartFallback" src="{daily_b64}" style="width:100%; max-width:700px; display:block; margin:0 auto;" alt="금일 업무 현황 차트">' if daily_b64 else ''}
@@ -481,7 +532,7 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
         </div>
         <div class="chart-card">
             <div class="chart-title">
-                <div>📈 누적 작업 건수</div>
+                <div>📈 담당자별 누적 작업 건수</div>
             </div>
             <div class="chart-container-inner">
                 {f'<img id="monthlyChartFallback" src="{monthly_b64}" style="width:100%; max-width:700px; display:block; margin:0 auto;" alt="누적 작업 건수 차트">' if monthly_b64 else ''}
@@ -490,6 +541,29 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
         </div>
     </div>
     {custom_legend_html}
+
+    <!-- 업무별 차트 영역 -->
+    <div class="section-title">업무별 실적 분석 (일계 vs 누계 합계)</div>
+    <div class="chart-grid">
+        <div class="chart-card">
+            <div class="chart-title">
+                <div>📅 업무별 금일 업무 합계 (일계)</div>
+            </div>
+            <div class="chart-container-inner">
+                {f'<img id="taskDailyChartFallback" src="{task_daily_b64}" style="width:100%; max-width:700px; display:block; margin:0 auto;" alt="업무별 금일 업무 합계 차트">' if task_daily_b64 else ''}
+                <canvas id="taskDailyChart" style="display:none;"></canvas>
+            </div>
+        </div>
+        <div class="chart-card">
+            <div class="chart-title">
+                <div>📈 업무별 누적 작업 합계</div>
+            </div>
+            <div class="chart-container-inner">
+                {f'<img id="taskMonthlyChartFallback" src="{task_monthly_b64}" style="width:100%; max-width:700px; display:block; margin:0 auto;" alt="업무별 누적 작업 합계 차트">' if task_monthly_b64 else ''}
+                <canvas id="taskMonthlyChart" style="display:none;"></canvas>
+            </div>
+        </div>
+    </div>
 
     <!-- 테이블 영역 -->
     <div class="section-title">개별 업무 상세 실적 현황 (일계/누계 통합형)</div>
@@ -514,9 +588,18 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
         if (mfb) mfb.style.display = 'none';
         document.getElementById('monthlyChart').style.display = 'block';
 
+        const tdfb = document.getElementById('taskDailyChartFallback');
+        if (tdfb) tdfb.style.display = 'none';
+        document.getElementById('taskDailyChart').style.display = 'block';
+
+        const tmfb = document.getElementById('taskMonthlyChartFallback');
+        if (tmfb) tmfb.style.display = 'none';
+        document.getElementById('taskMonthlyChart').style.display = 'block';
+
         Chart.register(ChartDataLabels);
 
         const staffList = {json.dumps(staff_list, ensure_ascii=False)};
+        const taskLabels = {json.dumps(task_labels, ensure_ascii=False)};
         
         // 일계 차트 (누적 막대)
         const ctxDaily = document.getElementById('dailyChart').getContext('2d');
@@ -542,7 +625,7 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
             }},
             scales: {{
                 x: {{ stacked: true, grid: {{ display: false }} }},
-                y: {{ stacked: true, suggestedMax: 300 }}
+                y: {{ stacked: true }}
             }}
         }}
     }});
@@ -571,10 +654,78 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
             }},
             scales: {{
                 x: {{ stacked: true, grid: {{ display: false }} }},
-                y: {{ stacked: true, suggestedMax: 3500 }}
+                y: {{ stacked: true }}
             }}
         }}
-        }});
+    }});
+
+    // 업무별 일계 차트
+    const ctxTaskDaily = document.getElementById('taskDailyChart').getContext('2d');
+    new Chart(ctxTaskDaily, {{
+        type: 'bar',
+        data: {{
+            labels: taskLabels,
+            datasets: {json.dumps(task_daily_datasets, ensure_ascii=False)}
+        }},
+        options: {{
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {{
+                legend: {{ display: false }},
+                datalabels: {{
+                    color: '#4b5563',
+                    anchor: 'end',
+                    align: 'top',
+                    font: {{ weight: 'bold', size: 11 }},
+                    formatter: function(value, context) {{
+                        if (!value || value === 0) return '';
+                        return value + '건';
+                    }}
+                }}
+            }},
+            scales: {{
+                x: {{ grid: {{ display: false }} }},
+                y: {{ beginAtZero: true }}
+            }},
+            layout: {{
+                padding: {{ top: 20 }}
+            }}
+        }}
+    }});
+
+    // 업무별 누계 차트
+    const ctxTaskMonthly = document.getElementById('taskMonthlyChart').getContext('2d');
+    new Chart(ctxTaskMonthly, {{
+        type: 'bar',
+        data: {{
+            labels: taskLabels,
+            datasets: {json.dumps(task_monthly_datasets, ensure_ascii=False)}
+        }},
+        options: {{
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {{
+                legend: {{ display: false }},
+                datalabels: {{
+                    color: '#4b5563',
+                    anchor: 'end',
+                    align: 'top',
+                    font: {{ weight: 'bold', size: 11 }},
+                    formatter: function(value, context) {{
+                        if (!value || value === 0) return '';
+                        return value.toLocaleString() + '건';
+                    }}
+                }}
+            }},
+            scales: {{
+                x: {{ grid: {{ display: false }} }},
+                y: {{ beginAtZero: true }}
+            }},
+            layout: {{
+                padding: {{ top: 20 }}
+            }}
+        }}
+    }});
     }}
 </script>
 </body>
