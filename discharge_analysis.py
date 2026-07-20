@@ -1187,9 +1187,10 @@ class SettingsWindow:
         if new_path:
             LOCAL_BASE_PATH = new_path
             os.makedirs(LOCAL_BASE_PATH, exist_ok=True)
-            STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "backup/staff_master.json")
-            TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "backup/task_master.json")
+            STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "staff_master.json")
+            TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "task_master.json")
             try:
+                os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
                 config_data = safe_read_json(CONFIG_FILE, default={})
                 config_data["LOCAL_BASE_PATH"] = new_path
                 safe_write_json(CONFIG_FILE, config_data)
