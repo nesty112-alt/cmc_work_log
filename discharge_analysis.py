@@ -752,9 +752,13 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
     try:
         with open(out_file, "w", encoding="utf-8") as f:
             f.write(html_content)
-        import urllib.request
-        uri = "file://" + urllib.request.pathname2url(os.path.abspath(out_file))
-        webbrowser.open(uri)
+        import sys
+        if sys.platform == "win32":
+            os.startfile(os.path.abspath(out_file))
+        else:
+            import urllib.request
+            uri = "file://" + urllib.request.pathname2url(os.path.abspath(out_file))
+            webbrowser.open(uri)
         return out_file, None
     except Exception as e:
         return None, str(e)
