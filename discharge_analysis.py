@@ -3,6 +3,7 @@ import json
 import glob
 import time
 from datetime import datetime
+import socket
 import tkinter as tk
 from tkinter import ttk, messagebox
 import pandas as pd
@@ -12,6 +13,18 @@ try:
     HAS_TKCALENDAR = True
 except ImportError:
     HAS_TKCALENDAR = False
+
+# --- 네트워크 유틸리티 ---
+def get_local_ip():
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('10.255.255.255', 1))
+        ip = s.getsockname()[0]
+    except Exception:
+        ip = '127.0.0.1'
+    finally:
+        s.close()
+    return ip
 
 # --- 동시성 제어 유틸리티 ---
 class FileLock:
@@ -201,6 +214,70 @@ class WorkLogApp:
 
         self.entries = {}
         self.create_widgets()
+        
+        # macOS 복사/붙여넣기 단축키 지원 (Command+C, Command+V 등)
+        self.root.bind_class("Text", "<Command-c>", lambda event: event.widget.event_generate("<<Copy>>"))
+        self.root.bind_class("Text", "<Command-v>", lambda event: event.widget.event_generate("<<Paste>>"))
+        self.root.bind_class("Text", "<Command-x>", lambda event: event.widget.event_generate("<<Cut>>"))
+        self.root.bind_class("Text", "<Command-a>", lambda event: event.widget.tag_add("sel", "1.0", "end"))
+        
+        self.root.bind_class("Entry", "<Command-c>", lambda event: event.widget.event_generate("<<Copy>>"))
+        self.root.bind_class("Entry", "<Command-v>", lambda event: event.widget.event_generate("<<Paste>>"))
+        self.root.bind_class("Entry", "<Command-x>", lambda event: event.widget.event_generate("<<Cut>>"))
+        self.root.bind_class("Entry", "<Command-a>", lambda event: event.widget.selection_range(0, "end"))
+
+        # 우클릭 메뉴 설정
+        self.setup_context_menu()
+
+    def setup_context_menu(self):
+        self.context_menu = tk.Menu(self.root, tearoff=0)
+        self.context_menu.add_command(label="복사 (Copy)", command=self.copy_text)
+        self.context_menu.add_command(label="붙여넣기 (Paste)", command=self.paste_text)
+        self.context_menu.add_command(label="잘라내기 (Cut)", command=self.cut_text)
+        self.context_menu.add_separator()
+        self.context_menu.add_command(label="전체 선택 (Select All)", command=self.select_all_text)
+
+        self.root.bind_class("Text", "<Button-3>", self.show_context_menu)
+        self.root.bind_class("Entry", "<Button-3>", self.show_context_menu)
+        # Mac 트랙패드 보조 클릭용
+        self.root.bind_class("Text", "<Button-2>", self.show_context_menu)
+        self.root.bind_class("Entry", "<Button-2>", self.show_context_menu)
+
+    def show_context_menu(self, event):
+        event.widget.focus_set()
+        self.current_widget = event.widget
+        try:
+            self.context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.context_menu.grab_release()
+
+    def copy_text(self):
+        if hasattr(self, 'current_widget') and self.current_widget:
+            try:
+                self.current_widget.event_generate("<<Copy>>")
+            except tk.TclError:
+                pass
+
+    def paste_text(self):
+        if hasattr(self, 'current_widget') and self.current_widget:
+            try:
+                self.current_widget.event_generate("<<Paste>>")
+            except tk.TclError:
+                pass
+
+    def cut_text(self):
+        if hasattr(self, 'current_widget') and self.current_widget:
+            try:
+                self.current_widget.event_generate("<<Cut>>")
+            except tk.TclError:
+                pass
+
+    def select_all_text(self):
+        if hasattr(self, 'current_widget') and self.current_widget:
+            if isinstance(self.current_widget, tk.Text):
+                self.current_widget.tag_add("sel", "1.0", "end")
+            else:
+                self.current_widget.selection_range(0, "end")
 
     def validate_number(self, value_if_allowed):
         if value_if_allowed == "":
@@ -328,7 +405,9 @@ class WorkLogApp:
                 entry = tk.Entry(cat_box, width=12, justify="right", validate="key", validatecommand=vcmd)
                 entry.insert(0, "0")  # 기본값 0
                 entry.grid(row=idx, column=3, padx=5, pady=2)
-                self.entries[field] = entry
+                
+                unique_key = f"{category}_{field}"
+                self.entries[unique_key] = entry
                 self.entry_list.append(entry)
 
         # 엔터 키 입력 시 다음 필드로 이동 및 텍스트 전체 선택
@@ -405,14 +484,14 @@ class WorkLogApp:
             messagebox.showerror("오류", "날짜 형식이 올바르지 않습니다. (YYYY-MM-DD)")
             return
 
-        # 입력 데이터 추출 및 검증
+        # 현재 UI 데이터 읽기
         task_data = {}
-        for field, entry in self.entries.items():
-            val = entry.get().strip()
-            if not val.isdigit():
-                messagebox.showerror("오류", f"'{field}' 항목에는 숫자만 입력할 수 있습니다.")
-                return
-            task_data[field] = int(val)
+        for category, fields in TASK_CATEGORIES.items():
+            for field in fields:
+                unique_key = f"{category}_{field}"
+                if unique_key in self.entries:
+                    val = self.entries[unique_key].get().strip()
+                    task_data[unique_key] = int(val) if val.isdigit() else 0
 
         # 로컬 경로 생성 (월별로 폴더 분할 관리)
         target_dir = os.path.join(LOCAL_BASE_PATH, folder_month)
@@ -426,13 +505,28 @@ class WorkLogApp:
         file_name = f"{file_date}_{user_name}.json"
         file_path = os.path.join(target_dir, file_name)
 
-        # 데이터 저장 구조 정의
+        # 기존 데이터가 있다면 히스토리에 추가하기 위해 읽어옴
+        history = []
+        if os.path.exists(file_path):
+            try:
+                old_data = safe_read_json(file_path)
+                if old_data:
+                    history = old_data.get("history", [])
+                    # 이전 상태 기록 (history 자기 자신은 제외)
+                    old_state = {k: v for k, v in old_data.items() if k != "history"}
+                    history.append(old_state)
+            except:
+                pass
+
+        # 데이터 저장 구조 정의 (히스토리 포함)
         payload = {
             "date": date_input,
             "name": user_name,
             "tasks": task_data,
             "other_progress": self.other_progress_text.get("1.0", tk.END).strip(),
-            "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "ip": get_local_ip(),
+            "history": history
         }
 
         try:
@@ -449,7 +543,10 @@ class WorkLogApp:
             messagebox.showerror("저장 실패", f"파일 저장 중 오류가 발생했습니다: {e}")
 
     def preview_html(self):
-        from html_export import generate_html_report
+        import html_export
+        import importlib
+        importlib.reload(html_export)
+        generate_html_report = html_export.generate_html_report
         date_input = self.date_var.get().strip()
         try:
             date_obj = datetime.strptime(date_input, "%Y-%m-%d")
@@ -471,7 +568,13 @@ class WorkLogApp:
                 data = safe_read_json(file_path)
                 if data:
                     row = {"일자": data.get("date", ""), "담당자": data.get("name", ""), "other_progress": data.get("other_progress", "")}
-                    row.update(data.get("tasks", {}))
+                    tasks = data.get("tasks", {})
+                    migrated_tasks = {}
+                    for category, fields in TASK_CATEGORIES.items():
+                        for field in fields:
+                            unique_key = f"{category}_{field}"
+                            migrated_tasks[unique_key] = tasks.get(unique_key, tasks.get(field, 0))
+                    row.update(migrated_tasks)
                     all_rows.append(row)
             except Exception as e:
                 pass
@@ -480,12 +583,12 @@ class WorkLogApp:
         user_name = self.staff_combo.get()
         if user_name != "선택하세요":
             task_data = {}
-            for field, entry in self.entries.items():
-                val = entry.get().strip()
-                if val.isdigit():
-                    task_data[field] = int(val)
-                else:
-                    task_data[field] = 0
+            for category, fields in TASK_CATEGORIES.items():
+                for field in fields:
+                    unique_key = f"{category}_{field}"
+                    if unique_key in self.entries:
+                        val = self.entries[unique_key].get().strip()
+                        task_data[unique_key] = int(val) if val.isdigit() else 0
             
             ui_row = {"일자": date_input, "담당자": user_name, "other_progress": self.other_progress_text.get("1.0", tk.END).strip()}
             ui_row.update(task_data)
@@ -574,10 +677,13 @@ class WorkLogApp:
                     data = safe_read_json(file_path)
                     if data:
                         tasks = data.get("tasks", {})
-                        for k, v in tasks.items():
-                            if k in self.entries:
-                                self.entries[k].delete(0, tk.END)
-                                self.entries[k].insert(0, str(v))
+                        for category, fields in TASK_CATEGORIES.items():
+                            for field in fields:
+                                unique_key = f"{category}_{field}"
+                                val = tasks.get(unique_key, tasks.get(field, 0))
+                                if unique_key in self.entries:
+                                    self.entries[unique_key].delete(0, tk.END)
+                                    self.entries[unique_key].insert(0, str(val))
                         other_progress = data.get("other_progress", "")
                         if other_progress:
                             self.other_progress_text.insert("1.0", other_progress)
@@ -654,7 +760,13 @@ class WorkLogApp:
                 data = safe_read_json(file_path)
                 if data:
                     row = {"일자": data.get("date", ""), "담당자": data.get("name", ""), "other_progress": data.get("other_progress", "")}
-                    row.update(data.get("tasks", {}))
+                    tasks = data.get("tasks", {})
+                    migrated_tasks = {}
+                    for category, fields in TASK_CATEGORIES.items():
+                        for field in fields:
+                            unique_key = f"{category}_{field}"
+                            migrated_tasks[unique_key] = tasks.get(unique_key, tasks.get(field, 0))
+                    row.update(migrated_tasks)
                     all_rows.append(row)
             except Exception as e:
                 print(f"파일 로드 실패 ({file_path}): {e}")
