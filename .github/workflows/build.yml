@@ -1,24 +1,22 @@
 name: Build Windows EXE
 
 on:
-  # 코드가 main 또는 master 브랜치에 push될 때 자동으로 실행됩니다.
   push:
     branches: [ "main", "master" ]
-  # GitHub 웹페이지에서 수동으로 버튼을 눌러 빌드를 실행할 수 있게 해줍니다.
   workflow_dispatch: 
 
 jobs:
   build:
-    runs-on: windows-latest # 윈도우 환경에서 빌드합니다.
+    runs-on: windows-latest
 
     steps:
     - name: 소스코드 가져오기 (Checkout)
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Python 환경 설정
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.10' # 필요에 따라 3.11 등으로 수정 가능합니다.
+        python-version: '3.10' 
 
     - name: 필수 라이브러리 및 PyInstaller 설치
       run: |
@@ -31,7 +29,7 @@ jobs:
         pyinstaller --noconfirm --onefile --windowed discharge_analysis.py
 
     - name: 빌드된 exe 파일 업로드 (Artifacts)
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
-        name: WorkLogApp_Windows_EXE # 다운로드 받을 압축 파일 이름
-        path: dist/discharge_analysis.exe # 업로드할 실제 exe 파일 경로
+        name: WorkLogApp_Windows_EXE
+        path: dist/discharge_analysis.exe
