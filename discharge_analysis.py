@@ -1415,9 +1415,24 @@ class WorkLogApp:
 
         html_target_dir = os.path.join(LOCAL_BASE_PATH, "html report", folder_month, date_input)
         os.makedirs(html_target_dir, exist_ok=True)
-        out_file, err = generate_html_report(date_input, html_target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=True)
-        if err:
-            messagebox.showerror("미리보기 실패", f"미리보기 생성 중 오류가 발생했습니다: {err}")
+        
+        self.root.config(cursor="watch")
+        self.root.update_idletasks()
+        
+        def run_report():
+            try:
+                out_file, err = generate_html_report(date_input, html_target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=True)
+                self.root.after(0, finish_report, out_file, err)
+            except Exception as e:
+                self.root.after(0, finish_report, None, str(e))
+                
+        def finish_report(out_file, err):
+            self.root.config(cursor="")
+            if err:
+                messagebox.showerror("미리보기 실패", f"미리보기 생성 중 오류가 발생했습니다: {err}")
+                
+        import threading
+        threading.Thread(target=run_report, daemon=True).start()
 
     def load_data(self, event=None):
         date_input = self.date_var.get().strip()
@@ -1827,11 +1842,26 @@ class WorkLogApp:
 
         html_target_dir = os.path.join(LOCAL_BASE_PATH, "html report", folder_month, date_input)
         os.makedirs(html_target_dir, exist_ok=True)
-        out_file, err = generate_html_report(date_input, html_target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES)
-        if out_file:
-            messagebox.showinfo("취합 성공", f"HTML 대시보드 리포트 생성이 완료되었습니다.\n\n저장 경로:\n{out_file}")
-        else:
-            messagebox.showerror("HTML 변환 실패", f"HTML 리포트 생성 중 오류가 발생했습니다: {err}")
+        
+        self.root.config(cursor="watch")
+        self.root.update_idletasks()
+        
+        def run_report():
+            try:
+                out_file, err = generate_html_report(date_input, html_target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES)
+                self.root.after(0, finish_report, out_file, err)
+            except Exception as e:
+                self.root.after(0, finish_report, None, str(e))
+                
+        def finish_report(out_file, err):
+            self.root.config(cursor="")
+            if out_file:
+                messagebox.showinfo("취합 성공", f"HTML 대시보드 리포트 생성이 완료되었습니다.\n\n저장 경로:\n{out_file}")
+            else:
+                messagebox.showerror("HTML 변환 실패", f"HTML 리포트 생성 중 오류가 발생했습니다: {err}")
+
+        import threading
+        threading.Thread(target=run_report, daemon=True).start()
 
     def open_settings(self):
         SettingsWindow(self)
