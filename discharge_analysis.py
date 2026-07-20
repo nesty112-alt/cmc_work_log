@@ -875,8 +875,17 @@ def safe_read_text(filepath, default=""):
 # ------------------------------
 
 # 1. 고정 설정 (로컬 테스트용 폴더 경로 및 부서원 리스트)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_FILE = os.path.join(BASE_DIR, "backup/config.json")
+import sys
+if getattr(sys, 'frozen', False):
+    BASE_DIR = os.path.dirname(sys.executable)
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    
+CONFIG_FILE = os.path.join(BASE_DIR, "backup", "config.json")
+try:
+    os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+except:
+    pass
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
