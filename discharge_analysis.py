@@ -783,6 +783,8 @@ class FileLock:
 
     def __enter__(self):
         start = time.time()
+        # 폴더가 없으면 생성 (Errno 2 방지)
+        os.makedirs(os.path.dirname(self.lockfile), exist_ok=True)
         while True:
             try:
                 # 원자적 생성으로 동시 접근 차단
