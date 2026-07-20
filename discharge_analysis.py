@@ -93,20 +93,27 @@ def load_config():
                 return json.load(f)
         except:
             pass
-    return {"LOCAL_BASE_PATH": os.path.join(os.getcwd(), "업무일지_테스트")}
+    return {"LOCAL_BASE_PATH": ""}
 
 config = load_config()
-LOCAL_BASE_PATH = config.get("LOCAL_BASE_PATH", os.path.join(os.getcwd(), "업무일지_테스트"))
-os.makedirs(LOCAL_BASE_PATH, exist_ok=True)
+LOCAL_BASE_PATH = config.get("LOCAL_BASE_PATH", "")
 
-STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "staff_master.json")
 LAST_USER_FILE = os.path.join(os.getcwd(), "last_user.txt")
+
+if LOCAL_BASE_PATH:
+    STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "staff_master.json")
+    TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "task_master.json")
+else:
+    STAFF_MASTER_FILE = ""
+    TASK_MASTER_FILE = ""
 
 def load_staff_list():
     default_staff = [
         "이지연", "신준호", "박선우", "박유진", "박연정",
         "이재희", "김정현", "이윤혜", "박민영"
     ]
+    if not STAFF_MASTER_FILE:
+        return default_staff
     try:
         loaded = safe_read_json(STAFF_MASTER_FILE, default=None)
         if loaded is not None:
@@ -149,6 +156,8 @@ def load_task_list():
             "가코딩"
         ]
     }
+    if not TASK_MASTER_FILE:
+        return default_tasks
     try:
         loaded = safe_read_json(TASK_MASTER_FILE, default=None)
         if loaded is not None:
@@ -170,6 +179,25 @@ class WorkLogApp:
         self.root = root
         self.root.title("재원점검 퇴원분석 업무일지")
         self.root.geometry("1000x950")
+
+        if not LOCAL_BASE_PATH or not os.path.exists(LOCAL_BASE_PATH):
+            self.root.withdraw()
+            if not LOCAL_BASE_PATH:
+                messagebox.showwarning("필수 설정 안내", "최초 실행 시 데이터 적재 폴더(공유 폴더) 설정이 필요합니다.\n설정을 완료해야 프로그램을 사용할 수 있습니다.")
+            else:
+                messagebox.showerror("접속 오류", f"설정된 폴더와 연결되지 않았습니다.\n접속을 확인해주세요.\n\n경로: {LOCAL_BASE_PATH}")
+                
+            self.settings_window = SettingsWindow(self)
+            self.root.wait_window(self.settings_window.top)
+            
+            if not LOCAL_BASE_PATH or not os.path.exists(LOCAL_BASE_PATH):
+                self.root.destroy()
+                return
+                
+            global STAFF_LIST, TASK_CATEGORIES
+            STAFF_LIST = load_staff_list()
+            TASK_CATEGORIES = load_task_list()
+            self.root.deiconify()
 
         self.entries = {}
         self.create_widgets()
@@ -1030,10 +1058,13 @@ class SettingsWindow:
 
     def save_settings(self):
         # Save Path
-        global LOCAL_BASE_PATH
+        global LOCAL_BASE_PATH, STAFF_MASTER_FILE, TASK_MASTER_FILE
         new_path = self.path_var.get().strip()
         if new_path:
             LOCAL_BASE_PATH = new_path
+            os.makedirs(LOCAL_BASE_PATH, exist_ok=True)
+            STAFF_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "staff_master.json")
+            TASK_MASTER_FILE = os.path.join(LOCAL_BASE_PATH, "task_master.json")
             try:
                 config_data = safe_read_json(CONFIG_FILE, default={})
                 config_data["LOCAL_BASE_PATH"] = new_path
@@ -1041,6 +1072,9 @@ class SettingsWindow:
             except Exception as e:
                 messagebox.showerror("오류", f"경로 설정 저장 실패: {e}")
                 return
+        else:
+            messagebox.showerror("오류", "데이터 적재 폴더 경로를 지정해주세요.")
+            return
 
         # Save Staff
         new_staff = list(self.staff_listbox.get(0, tk.END))
