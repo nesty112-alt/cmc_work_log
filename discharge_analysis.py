@@ -1763,13 +1763,16 @@ class WorkLogApp:
                 
             messagebox.showinfo("취합 성공", f"총 {len(json_files)}건의 파일이 처리되었습니다.\n(Summary 폼 생성 완료)\n\n저장 경로:\n{excel_path}")
             # 저장 후 자동 실행 (크로스 플랫폼)
-            import sys, subprocess
-            if sys.platform == "win32":
-                os.startfile(excel_path)
-            elif sys.platform == "darwin":
-                subprocess.Popen(['open', excel_path])
-            else:
-                subprocess.Popen(['xdg-open', excel_path])
+            try:
+                import sys, subprocess
+                if sys.platform == "win32":
+                    os.startfile(excel_path)
+                elif sys.platform == "darwin":
+                    subprocess.Popen(['open', excel_path])
+                else:
+                    subprocess.Popen(['xdg-open', excel_path])
+            except Exception:
+                pass
         except ModuleNotFoundError:
             # xlsxwriter가 없을 경우를 대비하여 엔진 지정 없이 저장
             messagebox.showwarning("라이브러리 경고", "xlsxwriter 모듈이 설치되어 있지 않아 그래프 생성을 생략합니다.\n명령어 'pip install xlsxwriter'를 입력하시면 그래프 기능이 활성화됩니다.")
@@ -1778,13 +1781,16 @@ class WorkLogApp:
                     df_daily.to_excel(writer, sheet_name=date_input, index=False)
                     df_monthly_with_total.to_excel(writer, sheet_name="월간 요약", index=False)
                 messagebox.showinfo("취합 성공", f"총 {len(json_files)}건의 파일이 처리되었습니다.\n\n저장 경로:\n{excel_path}")
-                import sys, subprocess
-                if sys.platform == "win32":
-                    os.startfile(excel_path)
-                elif sys.platform == "darwin":
-                    subprocess.Popen(['open', excel_path])
-                else:
-                    subprocess.Popen(['xdg-open', excel_path])
+                try:
+                    import sys, subprocess
+                    if sys.platform == "win32":
+                        os.startfile(excel_path)
+                    elif sys.platform == "darwin":
+                        subprocess.Popen(['open', excel_path])
+                    else:
+                        subprocess.Popen(['xdg-open', excel_path])
+                except Exception:
+                    pass
             except Exception as e2:
                 messagebox.showerror("엑셀 변환 실패", f"엑셀 저장 중 오류가 발생했습니다: {e2}")
         except Exception as e:
