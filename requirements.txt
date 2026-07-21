@@ -1,5 +1,5 @@
 pandas
 xlsxwriter
 openpyxl
-tkcalendar
+PySide6
 pyinstaller
