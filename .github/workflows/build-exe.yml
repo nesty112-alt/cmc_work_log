@@ -32,5 +32,5 @@ jobs:
     - name: Upload Program Folder Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: discharge_analysis_program
+        name: IRDA log program
         path: dist/IRDA log/
