@@ -1007,7 +1007,7 @@ TASK_CATEGORIES = load_task_list()
 class WorkLogApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("재원점검 퇴원분석 업무일지")
+        self.root.title("IRDA Log - 재원점검 퇴원분석 업무일지")
         self.root.geometry("1000x950")
 
         self.entries = {}
