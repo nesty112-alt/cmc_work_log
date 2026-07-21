@@ -1018,9 +1018,7 @@ class WorkLogApp:
         global STAFF_LIST, TASK_CATEGORIES
         
         if not LOCAL_BASE_PATH or not os.path.exists(LOCAL_BASE_PATH):
-            if not LOCAL_BASE_PATH:
-                messagebox.showwarning("필수 설정 안내", "최초 실행 시 데이터 적재 폴더(공유 폴더) 설정이 필요합니다.\n설정을 완료해야 프로그램을 사용할 수 있습니다.")
-            else:
+            if LOCAL_BASE_PATH:
                 messagebox.showerror("접속 오류", f"설정된 폴더와 연결되지 않았습니다.\n접속을 확인해주세요.\n\n경로: {LOCAL_BASE_PATH}")
                 
             self.settings_window = SettingsWindow(self)
@@ -2125,5 +2123,21 @@ class SettingsWindow:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    
+    import os
+    icon_path = os.path.join(os.path.dirname(__file__), "static", "app_icon.ico")
+    if os.path.exists(icon_path):
+        root.iconbitmap(icon_path)
+
+    # 윈도우 기본 폰트(맑은 고딕) 전역 적용
+    import tkinter.font as tkFont
+    default_font = tkFont.nametofont("TkDefaultFont")
+    default_font.configure(family="맑은 고딕", size=10)
+    text_font = tkFont.nametofont("TkTextFont")
+    text_font.configure(family="맑은 고딕", size=10)
+    fixed_font = tkFont.nametofont("TkFixedFont")
+    fixed_font.configure(family="맑은 고딕", size=10)
+    root.option_add("*Font", "{맑은 고딕} 10")
+
     app = WorkLogApp(root)
     root.mainloop()
