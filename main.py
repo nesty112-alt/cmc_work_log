@@ -1008,7 +1008,12 @@ class WorkLogApp:
     def __init__(self, root):
         self.root = root
         self.root.title("IRDA Log - 재원점검 퇴원분석 업무일지")
-        self.root.geometry("1000x950")
+        w, h = 1000, 950
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        x = (sw - w) // 2
+        y = (sh - h) // 2
+        self.root.geometry(f"{w}x{h}+{x}+{y}")
 
         self.entries = {}
         self.root.withdraw()
@@ -1934,16 +1939,13 @@ class SettingsWindow:
         self.top = tk.Toplevel(app.root)
         self.top.title("환경설정")
         
-        # 메인창 기준 중앙 정렬 계산
-        app.root.update_idletasks()
-        main_x = app.root.winfo_x()
-        main_y = app.root.winfo_y()
-        main_w = app.root.winfo_width()
-        main_h = app.root.winfo_height()
-        
+        # 주 모니터 중앙 정렬 계산
+        self.top.update_idletasks()
         w, h = 500, 600
-        x = main_x + (main_w // 2) - (w // 2)
-        y = main_y + (main_h // 2) - (h // 2)
+        sw = self.top.winfo_screenwidth()
+        sh = self.top.winfo_screenheight()
+        x = (sw - w) // 2
+        y = (sh - h) // 2
         self.top.geometry(f"{w}x{h}+{x}+{y}")
 
         self.notebook = ttk.Notebook(self.top)
@@ -2123,6 +2125,14 @@ class SettingsWindow:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    
+    import ctypes
+    try:
+        # 작업표시줄 아이콘 독립을 위한 AppUserModelID 설정
+        myappid = 'hospital.irdalog.app.1.0'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception:
+        pass
     
     import os
     icon_path = os.path.join(os.path.dirname(__file__), "static", "app_icon.ico")
