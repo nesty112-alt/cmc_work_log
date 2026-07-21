@@ -33,4 +33,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: discharge_analysis_program
-        path: dist/discharge_analysis/
+        path: dist/재원점검 퇴원분석 업무일지/
