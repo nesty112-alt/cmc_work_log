@@ -264,16 +264,12 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
         html_content = html_content.replace("{{TASK_DAILY_B64}}", task_daily_img_tag)
         html_content = html_content.replace("{{TASK_MONTHLY_B64}}", task_monthly_img_tag)
 
-        if is_preview:
-            preview_path = os.path.join(target_dir, f"재원점검 퇴원분석 업무 대시보드_{file_date}_미리보기.html")
-            with open(preview_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
-            return preview_path
-        else:
-            final_path = os.path.join(target_dir, f"재원점검 퇴원분석 업무 대시보드_{file_date}.html")
-            with open(final_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
-            return final_path
+        html_dir = os.path.join(target_dir, "html 대시보드")
+        os.makedirs(html_dir, exist_ok=True)
+        final_path = os.path.join(html_dir, f"재원점검 퇴원분석 업무 대시보드_{file_date}.html")
+        with open(final_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        return final_path
             
     except Exception as e:
         print("HTML Template Error:", e)
@@ -691,12 +687,24 @@ class WorkLogApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("IRDA log - 재원점검 퇴원분석 업무일지 (v1.0)")
-        self.resize(600, 1020)
+        win_w = config.get("WIN_WIDTH", 600)
+        win_h = config.get("WIN_HEIGHT", 1020)
+        self.resize(win_w, win_h)
         self.entries = {}
         
         # Window start centered (simple approach)
         self.startup_check()
         
+    def closeEvent(self, event):
+        try:
+            config_data = safe_read_json(CONFIG_FILE, default={})
+            config_data["WIN_WIDTH"] = self.width()
+            config_data["WIN_HEIGHT"] = self.height()
+            safe_write_json(CONFIG_FILE, config_data)
+        except Exception as e:
+            print(f"Failed to save window size: {e}")
+        super().closeEvent(event)
+
     def startup_check(self):
         global STAFF_LIST, TASK_CATEGORIES
         if not LOCAL_BASE_PATH or not os.path.exists(LOCAL_BASE_PATH):
@@ -763,18 +771,21 @@ class WorkLogApp(QMainWindow):
         main_layout.addWidget(info_group)
         
         # Memo Box
-        memo_group = QGroupBox("공통 주요사항 (해당 일자 부서 전체 공유)")
+        memo_group = QGroupBox()
         memo_layout = QVBoxLayout(memo_group)
         
-        memo_btn_layout = QHBoxLayout()
-        memo_btn_layout.addStretch()
+        memo_header_layout = QHBoxLayout()
+        memo_title = QLabel("공통 주요사항")
+        memo_header_layout.addWidget(memo_title)
+        
+        memo_header_layout.addStretch()
         btn_memo_load = QPushButton("불러오기")
         btn_memo_load.clicked.connect(lambda: self.load_memo(silent=False))
         btn_memo_save = QPushButton("저장하기")
         btn_memo_save.clicked.connect(self.save_memo)
-        memo_btn_layout.addWidget(btn_memo_load)
-        memo_btn_layout.addWidget(btn_memo_save)
-        memo_layout.addLayout(memo_btn_layout)
+        memo_header_layout.addWidget(btn_memo_load)
+        memo_header_layout.addWidget(btn_memo_save)
+        memo_layout.addLayout(memo_header_layout)
         
         self.memo_text = QTextEdit()
         self.memo_text.setMaximumHeight(80)
@@ -792,14 +803,26 @@ class WorkLogApp(QMainWindow):
         scroll_layout = QVBoxLayout(scroll_content)
         
         self.entry_list = []
+        self.cat_groups = {}
+        self.cat_contents = {}
         for cat, fields in TASK_CATEGORIES.items():
             cat_group = QGroupBox(cat)
+            cat_group.setCheckable(True)
+            cat_group.setChecked(True)
+            self.cat_groups[cat] = cat_group
             
             # 카테고리 타이틀은 진하게, 내용은 기본 폰트로
             title_font = QFont("Arial", 11, QFont.Bold)
             cat_group.setFont(title_font)
             
-            cat_layout = QGridLayout(cat_group)
+            group_layout = QVBoxLayout(cat_group)
+            group_layout.setContentsMargins(0, 0, 0, 0)
+            cat_content = QWidget()
+            self.cat_contents[cat] = cat_content
+            group_layout.addWidget(cat_content)
+            cat_layout = QGridLayout(cat_content)
+            
+            cat_group.toggled.connect(lambda checked, w=cat_content, c=cat: self.toggle_category(c, checked, w))
             normal_font = QFont("맑은 고딕", 10)
             
             for idx, field in enumerate(fields):
@@ -814,6 +837,7 @@ class WorkLogApp(QMainWindow):
                 
                 from PySide6.QtGui import QIntValidator
                 le.setValidator(QIntValidator(0, 99999))
+                le.returnPressed.connect(lambda w=le: self.focus_next_entry(w))
                 
                 cat_layout.addWidget(le, idx, 1)
                 
@@ -1210,6 +1234,36 @@ class WorkLogApp(QMainWindow):
             except Exception as e2:
                 QMessageBox.critical(self, "오류", f"엑셀 저장 중 오류가 발생했습니다: {e}\n{e2}")
 
+    def focus_next_entry(self, current_le):
+        try:
+            idx = self.entry_list.index(current_le)
+            for i in range(idx + 1, len(self.entry_list)):
+                if self.entry_list[i].isVisible():
+                    self.entry_list[i].setFocus()
+                    self.entry_list[i].selectAll()
+                    return
+            current_le.focusNextChild()
+        except ValueError:
+            current_le.focusNextChild()
+
+    def toggle_category(self, cat, checked, widget):
+        widget.setVisible(checked)
+        try:
+            config_data = safe_read_json(CONFIG_FILE, default={})
+            collapsed = config_data.get("COLLAPSED_CATEGORIES", {})
+            user = self.staff_combo.currentText()
+            if user:
+                user_collapsed = collapsed.get(user, [])
+                if not checked and cat not in user_collapsed:
+                    user_collapsed.append(cat)
+                elif checked and cat in user_collapsed:
+                    user_collapsed.remove(cat)
+                collapsed[user] = user_collapsed
+                config_data["COLLAPSED_CATEGORIES"] = collapsed
+                safe_write_json(CONFIG_FILE, config_data)
+        except Exception as e:
+            print("Failed to save collapse state:", e)
+
     def load_data(self):
         date_input = self.date_edit.date().toString("yyyy-MM-dd")
         user_name = self.staff_combo.currentText()
@@ -1241,6 +1295,21 @@ class WorkLogApp(QMainWindow):
                     if other:
                         self.other_progress_text.setPlainText(other)
             except: pass
+
+        try:
+            config_data = safe_read_json(CONFIG_FILE, default={})
+            collapsed = config_data.get("COLLAPSED_CATEGORIES", {})
+            user_name = self.staff_combo.currentText()
+            user_collapsed = collapsed.get(user_name, [])
+            for c_name, group in getattr(self, 'cat_groups', {}).items():
+                is_checked = c_name not in user_collapsed
+                group.blockSignals(True)
+                group.setChecked(is_checked)
+                if c_name in getattr(self, 'cat_contents', {}):
+                    self.cat_contents[c_name].setVisible(is_checked)
+                group.blockSignals(False)
+        except Exception as e:
+            print("Failed to load collapse state:", e)
 
         self.load_memo(silent=True)
 
