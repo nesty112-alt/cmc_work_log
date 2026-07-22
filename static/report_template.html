@@ -249,7 +249,7 @@
     <!-- Header -->
     <div class="header">
         <div class="title-area">
-            <h1>📋 재원점검 · 퇴원분석 통합 업무대시보드</h1>
+            <h1>📋 지원업무 모니터링 통합 업무대시보드</h1>
         </div>
         <div class="meta-area">
             <span>보고일자:</span> {{REPORT_DATE}}<br>
@@ -264,29 +264,6 @@
         </ul>
     </div>
 
-    <!-- 담당자별 차트 영역 -->
-    <div class="section-title">담당자별 실적 분석 (일계 vs 누계 비교)</div>
-    <div class="chart-grid">
-        <div class="chart-card">
-            <div class="chart-title">
-                <div>📅 담당자별 금일 업무 현황 (일계)</div>
-            </div>
-            <div class="chart-container-inner">
-                {{DAILY_B64}}
-                <canvas id="dailyChart" style="display:none;"></canvas>
-            </div>
-        </div>
-        <div class="chart-card">
-            <div class="chart-title">
-                <div>📈 담당자별 누적 작업 건수</div>
-            </div>
-            <div class="chart-container-inner">
-                {{MONTHLY_B64}}
-                <canvas id="monthlyChart" style="display:none;"></canvas>
-            </div>
-        </div>
-    </div>
-    {{CUSTOM_LEGEND}}
 
     <!-- 업무별 차트 영역 -->
     <div class="section-title">업무별 실적 분석 (일계 vs 누계 합계)</div>
@@ -311,10 +288,16 @@
         </div>
     </div>
 
-    <!-- 테이블 영역 -->
-    <div class="section-title">개별 업무 상세 실적 현황 (일계/누계 통합형)</div>
-    <div class="table-container">
-        {{TABLE_HTML}}
+    <!-- 누적 추이 차트 영역 -->
+    <div class="section-title">업무별 실적 누적 추이</div>
+    <div class="chart-card" style="margin-bottom: 40px;">
+        <div class="chart-title">
+            <div>📈 누적 추이</div>
+        </div>
+        <div class="chart-container-inner">
+            {{TREND_B64}}
+            <canvas id="trendChart" style="display:none;"></canvas>
+        </div>
     </div>
 
     <!-- 그외 업무 진행사항 -->
@@ -322,61 +305,21 @@
     <div class="memo-grid">
         {{OTHER_PROGRESS_HTML}}
     </div>
+
+    <!-- 테이블 영역 -->
+    <div class="section-title">개별 업무 상세 실적 현황 (일계/누계 통합형)</div>
+    <div class="table-container">
+        {{TABLE_HTML}}
+    </div>
+
+
 </div>
 
 <script>
     if (typeof Chart !== 'undefined') {{STAFF_LIST_JSON}};
         const taskLabels = {{TASK_LABELS_JSON}};
         
-        // 일계 차트 (누적 막대)
-        const ctxDaily = document.getElementById('dailyChart').getContext('2d');
-    new Chart(ctxDaily, {{DAILY_CHART_JSON}}
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                datalabels: {
-                    color: 'white',
-                    font: { weight: 'bold', size: 16 },
-                    formatter: function(value, context) {
-                        if (!value || value === 0) return '';
-                        return value + '건';
-                    }
-                }
-            },
-            scales: {
-                x: { stacked: true, grid: { display: false }, ticks: { font: { size: 15 } } },
-                y: { stacked: true, ticks: { font: { size: 15 } } }
-            }
-        }
-    });
 
-    // 누계 차트 (누적 막대)
-    const ctxMonthly = document.getElementById('monthlyChart').getContext('2d');
-    new Chart(ctxMonthly, {{MONTHLY_CHART_JSON}}
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                datalabels: {
-                    color: 'white',
-                    font: { weight: 'bold', size: 16 },
-                    formatter: function(value, context) {
-                        if (!value || value === 0) return '';
-                        return value.toLocaleString() + '건';
-                    }
-                }
-            },
-            scales: {
-                x: { stacked: true, grid: { display: false }, ticks: { font: { size: 15 } } },
-                y: { stacked: true, ticks: { font: { size: 15 } } }
-            }
-        }
-    });
 
     // 업무별 일계 차트
     const ctxTaskDaily = document.getElementById('taskDailyChart').getContext('2d');
@@ -427,6 +370,27 @@
                         return value.toLocaleString() + '건';
                     }
                 }
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { font: { size: 15 } } },
+                y: { beginAtZero: true, ticks: { font: { size: 15 } } }
+            },
+            layout: {
+                padding: { top: 20 }
+            }
+        }
+    });
+
+    // 누적 추이 차트
+    const ctxTrend = document.getElementById('trendChart').getContext('2d');
+    new Chart(ctxTrend, {{TREND_CHART_JSON}}
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'top' },
+                datalabels: { display: false }
             },
             scales: {
                 x: { grid: { display: false }, ticks: { font: { size: 15 } } },

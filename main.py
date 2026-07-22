@@ -25,7 +25,7 @@ import base64
 
 QUICKCHART_OFFLINE = False
 
-def get_quickchart_b64(chart_config):
+def get_quickchart_b64(chart_config, width=700, height=300):
     global QUICKCHART_OFFLINE
     if QUICKCHART_OFFLINE:
         return ""
@@ -33,8 +33,8 @@ def get_quickchart_b64(chart_config):
     url = "https://quickchart.io/chart"
     payload = {
         "backgroundColor": "white",
-        "width": 700,
-        "height": 300,
+        "width": width,
+        "height": height,
         "format": "png",
         "version": "3",
         "chart": chart_config
@@ -42,7 +42,7 @@ def get_quickchart_b64(chart_config):
     try:
         data = json.dumps(payload).encode('utf-8')
         req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=1.5) as response:
+        with urllib.request.urlopen(req, timeout=10.0) as response:
             image_data = response.read()
             b64 = base64.b64encode(image_data).decode('utf-8')
             return f"data:image/png;base64,{b64}"
@@ -68,7 +68,7 @@ COLOR_PALETTE = [
     '#F28482', # 로즈
 ]
 
-def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, staff_list, task_categories, is_preview=False):
+def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, staff_list, task_categories, is_preview=False, df_monthly_base=None):
     # (Copied from original)
     try:
         date_obj = datetime.strptime(date_input, "%Y-%m-%d")
@@ -164,26 +164,133 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
         "type": "bar",
         "data": { "labels": task_labels, "datasets": task_daily_datasets },
         "options": {
-            "plugins": { "legend": { "display": False }, "datalabels": { "color": "#4b5563", "anchor": "end", "align": "top", "font": { "weight": "bold", "size": 16 } } },
-            "scales": { "y": { "beginAtZero": True } }, "layout": { "padding": { "top": 20 } }
+            "plugins": { "legend": { "display": False }, "datalabels": { "color": "#4b5563", "anchor": "end", "align": "top", "font": { "weight": "bold", "size": 22 } } },
+            "scales": { "x": { "ticks": { "font": { "size": 16 } } }, "y": { "beginAtZero": True, "ticks": { "font": { "size": 16 } } } }, "layout": { "padding": { "top": 30 } }
         }
     }
-    task_daily_b64 = get_quickchart_b64(qc_task_daily_config)
+    task_daily_b64 = get_quickchart_b64(qc_task_daily_config, height=500)
 
     qc_task_monthly_config = {
         "type": "bar",
         "data": { "labels": task_labels, "datasets": task_monthly_datasets },
         "options": {
-            "plugins": { "legend": { "display": False }, "datalabels": { "color": "#4b5563", "anchor": "end", "align": "top", "font": { "weight": "bold", "size": 16 } } },
-            "scales": { "y": { "beginAtZero": True } }, "layout": { "padding": { "top": 20 } }
+            "plugins": { "legend": { "display": False }, "datalabels": { "color": "#4b5563", "anchor": "end", "align": "top", "font": { "weight": "bold", "size": 22 } } },
+            "scales": { "x": { "ticks": { "font": { "size": 16 } } }, "y": { "beginAtZero": True, "ticks": { "font": { "size": 16 } } } }, "layout": { "padding": { "top": 30 } }
         }
     }
-    task_monthly_b64 = get_quickchart_b64(qc_task_monthly_config)
+
+    task_monthly_b64 = get_quickchart_b64(qc_task_monthly_config, height=500)
+
+    # ------------------ 누적 추이 데이터 생성 ------------------
+    trend_b64 = ""
+    trend_chart_json_str = "{}"
+    if df_monthly_base is not None and not df_monthly_base.empty:
+        import pandas as pd
+        task_cols = [c for c in df_monthly_base.columns if c not in ['일자', '담당자', 'other_progress', 'req_in_progress', 'req_out_progress', 'mail_progress']]
+        df_trend = df_monthly_base[['일자'] + task_cols].copy()
+        
+        df_trend[task_cols] = df_trend[task_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
+        df_trend_daily = df_trend.groupby('일자')[task_cols].sum()
+        
+        dates = df_trend_daily.index.tolist()
+        daily_totals = df_trend_daily.sum(axis=1).tolist()
+        cum_totals = pd.Series(daily_totals).cumsum().tolist()
+        
+        datasets = []
+        
+        max_daily_sum = int(max(daily_totals)) if daily_totals else 0
+        y_max = max_daily_sum * 2 if max_daily_sum > 0 else 10
+        
+        max_cum = int(max(cum_totals)) if cum_totals else 10
+        y1_max = int(max_cum * 1.1)
+        if y1_max < 10: y1_max = 10
+        
+        for task_key in task_cols:
+            daily_vals = df_trend_daily[task_key].tolist()
+            if sum(daily_vals) > 0:
+                color = task_colors.get(task_key, "#cccccc")
+                datasets.append({
+                    "label": f"{task_key}",
+                    "data": daily_vals,
+                    "backgroundColor": color,
+                    "type": "bar",
+                    "stack": "Stack 0",
+                    "yAxisID": "y",
+                    "datalabels": { "display": False }
+                })
+                
+        datasets.append({
+            "label": "일일 업무량",
+            "data": daily_totals,
+            "type": "line",
+            "borderColor": "transparent",
+            "backgroundColor": "transparent",
+            "pointRadius": 0,
+            "pointHoverRadius": 0,
+            "yAxisID": "y",
+            "datalabels": {
+                "display": True,
+                "align": "top",
+                "anchor": "end",
+                "color": "#3B82F6",
+                "font": { "weight": "bold", "size": 8 }
+            }
+        })
+        
+        datasets.append({
+            "label": "누적 업무량",
+            "data": cum_totals,
+            "borderColor": "#10B981",
+            "backgroundColor": "transparent",
+            "type": "line",
+            "yAxisID": "y1",
+            "tension": 0.1,
+            "datalabels": {
+                "display": True,
+                "align": "top",
+                "color": "#10B981",
+                "font": { "weight": "bold", "size": 8 }
+            }
+        })
+
+        qc_trend_config = {
+            "type": "line",
+            "data": {
+                "labels": dates,
+                "datasets": datasets
+            },
+            "options": {
+                "plugins": { "legend": { "display": False } },
+                "scales": { 
+                    "x": { "grid": { "display": False }, "stacked": True, "ticks": { "font": { "size": 10 } } },
+                    "y": { 
+                        "type": "linear", "display": True, "position": "left", "beginAtZero": True, "stacked": True, 
+                        "max": y_max, 
+                        "title": {"display": True, "text": "일일 업무량", "font": { "size": 10 }},
+                        "ticks": { "font": { "size": 10 } }
+                    },
+                    "y1": { 
+                        "type": "linear", "display": True, "position": "right", 
+                        "min": -y1_max, "max": y1_max, 
+                        "grid": { "drawOnChartArea": False }, 
+                        "title": {"display": True, "text": "누적 업무량", "font": { "size": 10 }},
+                        "ticks": { "font": { "size": 10 } }
+                    }
+                }
+            }
+        }
+        
+        trend_b64 = get_quickchart_b64(qc_trend_config, height=220)
+        import json
+        trend_chart_json_str = json.dumps(qc_trend_config)
+    # ---------------------------------------------------------
+
 
     daily_img_tag = f'<img id="dailyChartFallback" src="{daily_b64}" style="width:100%; max-width:700px; display:block; margin:0 auto;" alt="일일 실적 차트">' if daily_b64 else ''
     monthly_img_tag = f'<img id="monthlyChartFallback" src="{monthly_b64}" style="width:100%; max-width:700px; display:block; margin:0 auto;" alt="월 누적 실적 차트">' if monthly_b64 else ''
     task_daily_img_tag = f'<img id="taskDailyChartFallback" src="{task_daily_b64}" style="width:100%; max-width:700px; display:block; margin:0 auto;" alt="업무별 일일 실적 차트">' if task_daily_b64 else ''
     task_monthly_img_tag = f'<img id="taskMonthlyChartFallback" src="{task_monthly_b64}" style="width:100%; max-width:700px; display:block; margin:0 auto;" alt="업무별 누적 실적 차트">' if task_monthly_b64 else ''
+    trend_img_tag = f'<img id="trendChartFallback" src="{trend_b64}" style="width:100%; display:block; margin:0 auto;" alt="누적 추이 그래프">' if trend_b64 else ''
 
     custom_legend_html = '<div class="custom-legend">'
     for unique_key, t, cat in all_tasks:
@@ -258,11 +365,13 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
         html_content = html_content.replace("{{MONTHLY_CHART_JSON}}", json.dumps(qc_monthly_config))
         html_content = html_content.replace("{{TASK_DAILY_CHART_JSON}}", json.dumps(qc_task_daily_config))
         html_content = html_content.replace("{{TASK_MONTHLY_CHART_JSON}}", json.dumps(qc_task_monthly_config))
+        html_content = html_content.replace("{{TREND_CHART_JSON}}", trend_chart_json_str)
 
         html_content = html_content.replace("{{DAILY_B64}}", daily_img_tag)
         html_content = html_content.replace("{{MONTHLY_B64}}", monthly_img_tag)
         html_content = html_content.replace("{{TASK_DAILY_B64}}", task_daily_img_tag)
         html_content = html_content.replace("{{TASK_MONTHLY_B64}}", task_monthly_img_tag)
+        html_content = html_content.replace("{{TREND_B64}}", trend_img_tag)
 
         html_dir = os.path.join(target_dir, "html 대시보드")
         os.makedirs(html_dir, exist_ok=True)
@@ -383,7 +492,7 @@ def load_config():
 
 import threading
 
-def is_path_accessible(path, timeout=1.5):
+def is_path_accessible(path, timeout=10.0):
     if not path:
         return False
     result = [False]
@@ -1012,7 +1121,7 @@ class WorkLogApp(QMainWindow):
             if os.path.exists(memo_path):
                 memo_content = safe_read_text(memo_path) or ""
 
-        out_file = generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=not is_export)
+        out_file = generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=not is_export, df_monthly_base=df_monthly_base)
         if out_file:
             webbrowser.open('file://' + os.path.realpath(out_file))
             if is_export:
