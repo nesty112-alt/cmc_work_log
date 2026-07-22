@@ -192,6 +192,18 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
         df_trend[task_cols] = df_trend[task_cols].apply(pd.to_numeric, errors='coerce').fillna(0)
         df_trend_daily = df_trend.groupby('일자')[task_cols].sum()
         
+        if len(df_trend_daily) < 7:
+            from datetime import datetime, timedelta
+            try:
+                last_date_str = df_trend_daily.index[-1]
+                dt = datetime.strptime(last_date_str, "%Y-%m-%d")
+                needed = 7 - len(df_trend_daily)
+                future_dates = [(dt + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(1, needed + 1)]
+                new_index = list(df_trend_daily.index) + future_dates
+                df_trend_daily = df_trend_daily.reindex(new_index, fill_value=0)
+            except:
+                pass
+
         dates = df_trend_daily.index.tolist()
         daily_totals = df_trend_daily.sum(axis=1).tolist()
         cum_totals = pd.Series(daily_totals).cumsum().tolist()
