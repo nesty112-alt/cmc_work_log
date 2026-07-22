@@ -27,10 +27,10 @@ jobs:
 
     - name: Build Program Directory with PyInstaller
       run: |
-        pyinstaller --noconfirm --onedir --windowed --icon="static/app_icon.ico" --add-data "static;static" --hidden-import=xlsxwriter --hidden-import=openpyxl --name "WORK log" main.py
+        pyinstaller --noconfirm --onedir --windowed --icon="static/app_icon.ico" --add-data "static;static" --hidden-import=xlsxwriter --hidden-import=openpyxl --name "IRDA log" main.py
 
     - name: Upload Program Folder Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: WORK log program
-        path: dist/WORK log/
+        name: IRDA log program
+        path: dist/IRDA log/
