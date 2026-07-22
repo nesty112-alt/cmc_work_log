@@ -804,7 +804,7 @@ class SettingsWindow(QDialog):
         from PySide6.QtWidgets import QApplication
         import sys
         QProcess.startDetached(sys.executable, sys.argv[1:])
-        QApplication.quit()
+        sys.exit(0)
 
 
 class WorkLogApp(QMainWindow):
