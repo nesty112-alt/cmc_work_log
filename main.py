@@ -335,8 +335,8 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
     other_progress_html = ""
     for staff in staff_list:
         other_text = str(daily_dict.get(staff, {}).get("other_progress", "")).strip()
-        if not other_text or other_text == "0":
-            other_text = ""
+        if not other_text or other_text in ["0", "nan"]:
+            other_text = "-"
         else:
             other_text = other_text.replace("\n", "<br>")
             
@@ -356,6 +356,14 @@ def generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_
             
         html_content = html_content.replace("{{REPORT_DATE}}", report_date_str)
         html_content = html_content.replace("{{PAGE_TITLE}}", f"재원점검 퇴원분석 업무 대시보드_{file_date}")
+        try:
+            with open(os.path.join(script_dir, "static", "chart.min.js"), "r", encoding="utf-8") as js_f:
+                html_content = html_content.replace("{CHART_JS}", js_f.read())
+            with open(os.path.join(script_dir, "static", "chartjs-plugin-datalabels.min.js"), "r", encoding="utf-8") as d_f:
+                html_content = html_content.replace("{DATALABELS_JS}", d_f.read())
+        except Exception as e:
+            print("Failed to load chart js:", e)
+            html_content = html_content.replace("{CHART_JS}", "").replace("{DATALABELS_JS}", "")
         html_content = html_content.replace("{{MEMO_CONTENT}}", memo_content.replace("\n", "<br>"))
         html_content = html_content.replace("{{TABLE_HTML}}", table_html)
         html_content = html_content.replace("{{CUSTOM_LEGEND}}", custom_legend_html)
@@ -786,8 +794,9 @@ class SettingsWindow(QDialog):
             for j in range(cat.childCount()):
                 sub_tasks.append(cat.child(j).text(0))
             new_tasks[cat_name] = sub_tasks
-        safe_write_json(TASK_MASTER_FILE, new_tasks)        QMessageBox.information(self, "저장 완료", "설정이 저장되었습니다.
-확인을 누르면 프로그램이 재시작됩니다.")
+        safe_write_json(TASK_MASTER_FILE, new_tasks)
+        
+        QMessageBox.information(self, "저장 완료", "설정이 저장되었습니다.\n확인을 누르면 프로그램이 재시작됩니다.")
         self.accept()
         
         # 윈도우(앱) 재시작

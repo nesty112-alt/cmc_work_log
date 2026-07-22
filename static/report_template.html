@@ -316,91 +316,26 @@
 </div>
 
 <script>
-    if (typeof Chart !== 'undefined') {{STAFF_LIST_JSON}};
-        const taskLabels = {{TASK_LABELS_JSON}};
-        
+    if (typeof Chart !== 'undefined') {
+        try { Chart.register(ChartDataLabels); } catch (e) {}
 
-
-    // 업무별 일계 차트
-    const ctxTaskDaily = document.getElementById('taskDailyChart').getContext('2d');
-    new Chart(ctxTaskDaily, {{TASK_DAILY_CHART_JSON}}
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                datalabels: {
-                    color: '#4b5563',
-                    anchor: 'end',
-                    align: 'top',
-                    font: { weight: 'bold', size: 16 },
-                    formatter: function(value, context) {
-                        if (!value || value === 0) return '';
-                        return value + '건';
-                    }
-                }
-            },
-            scales: {
-                x: { grid: { display: false }, ticks: { font: { size: 15 } } },
-                y: { beginAtZero: true, ticks: { font: { size: 15 } } }
-            },
-            layout: {
-                padding: { top: 20 }
-            }
+        const taskDailyConf = {{TASK_DAILY_CHART_JSON}};
+        if (taskDailyConf && taskDailyConf.data) {
+            document.getElementById('taskDailyChart').style.display = 'block';
+            new Chart(document.getElementById('taskDailyChart').getContext('2d'), taskDailyConf);
         }
-    });
 
-    // 업무별 누계 차트
-    const ctxTaskMonthly = document.getElementById('taskMonthlyChart').getContext('2d');
-    new Chart(ctxTaskMonthly, {{TASK_MONTHLY_CHART_JSON}}
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                datalabels: {
-                    color: '#4b5563',
-                    anchor: 'end',
-                    align: 'top',
-                    font: { weight: 'bold', size: 16 },
-                    formatter: function(value, context) {
-                        if (!value || value === 0) return '';
-                        return value.toLocaleString() + '건';
-                    }
-                }
-            },
-            scales: {
-                x: { grid: { display: false }, ticks: { font: { size: 15 } } },
-                y: { beginAtZero: true, ticks: { font: { size: 15 } } }
-            },
-            layout: {
-                padding: { top: 20 }
-            }
+        const taskMonthlyConf = {{TASK_MONTHLY_CHART_JSON}};
+        if (taskMonthlyConf && taskMonthlyConf.data) {
+            document.getElementById('taskMonthlyChart').style.display = 'block';
+            new Chart(document.getElementById('taskMonthlyChart').getContext('2d'), taskMonthlyConf);
         }
-    });
 
-    // 누적 추이 차트
-    const ctxTrend = document.getElementById('trendChart').getContext('2d');
-    new Chart(ctxTrend, {{TREND_CHART_JSON}}
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'top' },
-                datalabels: { display: false }
-            },
-            scales: {
-                x: { grid: { display: false }, ticks: { font: { size: 15 } } },
-                y: { beginAtZero: true, ticks: { font: { size: 15 } } }
-            },
-            layout: {
-                padding: { top: 20 }
-            }
+        const trendConf = {{TREND_CHART_JSON}};
+        if (trendConf && trendConf.data) {
+            document.getElementById('trendChart').style.display = 'block';
+            new Chart(document.getElementById('trendChart').getContext('2d'), trendConf);
         }
-    });
     }
 </script>
 </body>
