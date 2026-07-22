@@ -942,6 +942,12 @@ class WorkLogApp(QMainWindow):
             QMessageBox.critical(self, "저장 실패", f"오류가 발생했습니다: {e}")
 
     def preview_html(self):
+        self._generate_html(is_export=False)
+
+    def export_to_html(self):
+        self._generate_html(is_export=True)
+
+    def _generate_html(self, is_export=False):
         date_input = self.date_edit.date().toString("yyyy-MM-dd")
         date_obj = self.date_edit.date().toPython()
         folder_month = date_obj.strftime("%Y-%m")
@@ -1006,15 +1012,13 @@ class WorkLogApp(QMainWindow):
             if os.path.exists(memo_path):
                 memo_content = safe_read_text(memo_path) or ""
 
-        out_file = generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=True)
+        out_file = generate_html_report(date_input, target_dir, daily_dict, monthly_dict, memo_content, ordered_users, TASK_CATEGORIES, is_preview=not is_export)
         if out_file:
             webbrowser.open('file://' + os.path.realpath(out_file))
+            if is_export:
+                QMessageBox.information(self, "완료", f"HTML 리포트가 생성되었습니다.\n{out_file}")
         else:
             QMessageBox.critical(self, "오류", "리포트 렌더링 실패.")
-
-    def export_to_html(self):
-        # Implement export_to_html in a similar way (skipped identical code for brevity, you can reuse preview_html)
-        self.preview_html()
 
     def export_to_excel(self):
         date_input = self.date_edit.date().toString("yyyy-MM-dd")
