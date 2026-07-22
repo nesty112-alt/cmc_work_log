@@ -786,10 +786,16 @@ class SettingsWindow(QDialog):
             for j in range(cat.childCount()):
                 sub_tasks.append(cat.child(j).text(0))
             new_tasks[cat_name] = sub_tasks
-        safe_write_json(TASK_MASTER_FILE, new_tasks)
-        
-        QMessageBox.information(self, "저장 완료", "설정이 저장되었습니다.\n변경 사항을 적용하려면 프로그램을 다시 실행해주세요.")
+        safe_write_json(TASK_MASTER_FILE, new_tasks)        QMessageBox.information(self, "저장 완료", "설정이 저장되었습니다.
+확인을 누르면 프로그램이 재시작됩니다.")
         self.accept()
+        
+        # 윈도우(앱) 재시작
+        from PySide6.QtCore import QProcess
+        from PySide6.QtWidgets import QApplication
+        import sys
+        QProcess.startDetached(sys.executable, sys.argv[1:])
+        QApplication.quit()
 
 
 class WorkLogApp(QMainWindow):
